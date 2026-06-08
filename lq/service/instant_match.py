@@ -1,7 +1,6 @@
 import json
 import xml.etree.ElementTree as ET
 from datetime import datetime
-import requests
 from pymemcache.client.base import Client
 
 import utils.dateUtil
@@ -9,6 +8,7 @@ from lq.dao import AsianOddsDao
 from lq.dao import TotalScoreDao
 from lq.parshtml import part_score
 from utils import sql_util, js2pyUtil
+from utils.webUtil import WebUtil
 
 
 # 解析字符串转比赛字典数据
@@ -143,14 +143,24 @@ def upInsMatch():
         matchsjson = client.get('insmatch').decode()
         matchsdict = json.loads(matchsjson)
         try:
-            score_r = requests.get(ch_score_xml, headers=headers_score, timeout=5)
+            score_r = WebUtil.requests_get(
+                ch_score_xml,
+                headers=headers_score,
+                timeout=5,
+                encoding='gb2312',
+                sourceName="lq_instant_score",
+            )
         except Exception as e:
             print(e)
         else:
-            score_r.encoding = 'gb2312'
-            score_data = score_r.text
+            if score_r[0] != 1:
+                score_data = ''
+            else:
+                score_data = score_r[1]
             #   ---------------- 更新即时比分----------------
-            if client.get('ch_score') is not None and client.get('ch_score').decode() == score_data:
+            if not score_data:
+                pass
+            elif client.get('ch_score') is not None and client.get('ch_score').decode() == score_data:
                 # print("比分变化：本次接收与上次接收 相同")
                 pass
             else:
@@ -231,13 +241,23 @@ def upInsMatch():
                 client.set('ch_score', score_data.encode())
         #   ---------------- 更新即时赔率 ----------------
         try:
-            odds365_r = requests.get(ch_odds_bet365_url, headers=headers_score, timeout=5)
+            odds365_r = WebUtil.requests_get(
+                ch_odds_bet365_url,
+                headers=headers_score,
+                timeout=5,
+                encoding='utf-8',
+                sourceName="lq_instant_odds365",
+            )
         except Exception as e:
             print(e)
         else:
-            odds365_r.encoding = 'utf-8'
-            odds8 = odds365_r.text
-            if client.get("ch_odds8") is not None and client.get("ch_odds8").decode() == odds8:
+            if odds365_r[0] != 1:
+                odds8 = ''
+            else:
+                odds8 = odds365_r[1]
+            if not odds8:
+                pass
+            elif client.get("ch_odds8") is not None and client.get("ch_odds8").decode() == odds8:
                 pass
             else:
                 print("最新赔率数据：")

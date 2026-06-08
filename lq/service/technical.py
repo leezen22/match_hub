@@ -1,10 +1,9 @@
 import traceback
 
-import requests
-
 from config import lqconfig_qt
 from utils import sql_util
 from utils.js2pyUtil import logLine
+from utils.webUtil import WebUtil
 
 
 class Technical(object):
@@ -28,15 +27,22 @@ class Technical(object):
             matchid) + ".js"
         # print(url)
         try:
-            page = requests.get(url, headers=lqconfig_qt.headers, timeout=5)
+            response = WebUtil.requests_get(
+                url,
+                headers=lqconfig_qt.headers,
+                timeout=5,
+                sourceName="lq_technical_team",
+            )
+            if response[0] != 1:
+                logLine(lqconfig_qt.quarterscore_e, str(matchid))
+                return [tech_home, tech_away]
         except Exception as e:
             print(e)
             excepstr = traceback.format_exc()
             logLine(lqconfig_qt.exception, excepstr)
             logLine(lqconfig_qt.quarterscore_e, str(matchid))
         else:
-            page.encoding = 'utf-8'
-            technicals = page.text
+            technicals = response[1]
             tech_data = technicals.split('$')
             # print(tech_data)
             if len(tech_data) > 2:

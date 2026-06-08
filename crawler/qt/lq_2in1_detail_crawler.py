@@ -2,10 +2,10 @@ import random
 import re
 import threading
 from bs4 import BeautifulSoup
-import requests
 
 from config import scrawler_config, common_config
 from utils import sql_util
+from utils.webUtil import WebUtil
 
 
 # from src.utils.webUtil import WebUtil
@@ -110,15 +110,15 @@ class Lq2in1Crawler(object):
         else:
             details['matchTime'] = self.matchTime
 
-        response = requests.get(self.qt_web_url, headers=headers,timeout=5)
-        state = response.status_code
-        content = response.text.strip()
-        # print(state, content)
-        # response = WebUtil.requests_get(self.qt_web_url, headers=headers)
-        # state = response[0]
-        # content = response[1]
-        # if state == 1 and content != '':
-        if state == 200 and content != '':
+        response = WebUtil.requests_get(
+            self.qt_web_url,
+            headers=headers,
+            timeout=5,
+            sourceName="lq_2in1_detail",
+        )
+        state = response[0]
+        content = response[1].strip()
+        if state == 1 and content != '':
             try:
                 fixed = re.sub(r'</td>\r\n(.*?)<tr(.*?)bgcolor="#FFFFFF">',
                                '</td>\r\n</tr>\r\n<tr bgcolor="#FFFFFF">',

@@ -2,8 +2,8 @@ import datetime
 import random
 import time
 
-import requests
 from config import scrawler_config, common_config
+from utils.webUtil import WebUtil
 
 
 class ScoreCrawler(object):
@@ -50,10 +50,14 @@ class ScoreCrawler(object):
                    }
         score = {}
         try:
-            response = requests.get(self.qt_mobile_url, headers=headers)
-            if response.status_code == 200 and len(response.text) > 0:
+            response = WebUtil.requests_get(
+                self.qt_mobile_url,
+                headers=headers,
+                sourceName="zq_score_mobile",
+            )
+            if response[0] == 1 and len(response[1]) > 0:
                 score = {'ScheduleId': self.scheduleId, 'HomeScore': 0, 'GuestScore': 0, 'HomeHalf': 0, 'AwayHalf': 0}
-                flashdata = response.text
+                flashdata = response[1]
                 scoredata = flashdata.split('!')[0]
                 arr = scoredata.split("^")
                 score['HomeScore'] = int(arr[6])
@@ -76,10 +80,14 @@ class ScoreCrawler(object):
         headers = {"Referer": self.qt_web_refer, "User-Agent": random.choice(common_config.web_agents)}
         score = {}
         try:
-            response = requests.get(self.qt_web_url, headers=headers)
-            if response.status_code == 200 and len(response.text) > 0:
+            response = WebUtil.requests_get(
+                self.qt_web_url,
+                headers=headers,
+                sourceName="zq_score_web",
+            )
+            if response[0] == 1 and len(response[1]) > 0:
                 score = {'ScheduleId': self.scheduleId, 'HomeScore': 0, 'AwayScore': 0, 'HomeHalf': 0, 'AwayHalf': 0}
-                txtdata = response.text
+                txtdata = response[1]
                 arr = txtdata.split("^")
                 score['MatchState'] = int(arr[4])
                 score['HomeScore'] = int(arr[10])

@@ -115,7 +115,7 @@ class WebUtil(object):
         return [state, content]
 
     @staticmethod
-    def requests_post(url, headers=None, data={}, timeout=5, isProxy=False, proxy=None,
+    def requests_post(url, headers=None, data=None, timeout=5, isProxy=False, proxy=None,
                       retry_time=2, sleep=True, retry_interval=2, isMobile=False,
                       sourceName=None, encoding=None):
         state = 0
@@ -123,6 +123,8 @@ class WebUtil(object):
         ip = ''
         info = ''
         count = 0
+        headers = dict(headers or {})
+        data = data or {}
         if isProxy and proxy is None:
             proxy = ProxyTools.get_http_proxy()
         if proxy:
