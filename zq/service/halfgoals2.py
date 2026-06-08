@@ -9,13 +9,13 @@ def update_halfgoals():
           "FROM zq_schedule " \
           "WHERE matchState=-1 and halfgoals_f=0 and matchTime >= '2024-01-01 00:00' " \
           "order by matchTime ASC"
-    results = sql_util.select_Execute(sql)
+    results = sql_util.select_rows(sql)
     print("更新比赛数量：{0}".format(len(results)))
     for item in results:
         schedulID = item[1]
         # matchState = item[8]
         sqltemp1 = "SELECT COUNT(*) FROM zq_halfgoals_3 where scheduleID = {0}".format(schedulID)
-        count = sql_util.select_Execute(sqltemp1)[0][0]
+        count = sql_util.select_rows(sqltemp1)[0][0]
         oddsdata = get_halfodds_goals(schedulID, 3)
         if count > 0:
             pass

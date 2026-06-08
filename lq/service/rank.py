@@ -183,7 +183,7 @@ class Rank(object):
             search_sql = "SELECT * FROM lq_rank where LeagueID=" + str(ranking['leagueID']) + " and TeamID=" + str(
                 ranking['teamID']) + \
                          " AND MatchSeason= '" + ranking['matchSeason'] + "'"
-            results = sql_util.select_Execute(search_sql)
+            results = sql_util.select_rows(search_sql)
             if len(results) == 0:
                 sql_util.insertData('lq_rank', ranking)
             else:
