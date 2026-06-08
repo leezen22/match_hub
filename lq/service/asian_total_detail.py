@@ -23,9 +23,9 @@ def upOddsDetail():
              "left JOIN `lq_schedule` as sche on sche.scheduleID = asian.ScheduleID " \
              "WHERE asian.CompanyID=8 and asian.finished_gun in(0,1) and sche.MatchState not in(-4,-5,-6) "
 
-    odds_365 = sql_util.select_Execute(sql365, isdict=True)
+    odds_365 = sql_util.select_dicts(sql365)
     print("odds_365", len(odds_365))
-    odds_crown = sql_util.select_Execute(sqlCrown, isdict=True)
+    odds_crown = sql_util.select_dicts(sqlCrown)
     print("odds_crown", len(odds_crown))
     # 更新365变化记录（更新365让分记录，会同步更新大小变化记录）
     threads = []
@@ -58,12 +58,16 @@ class AsianTotalDetails(object):
     # 更新让分和总分变化记录
     @staticmethod
     def up_asianTotal_match(scheduleID, companyID):
-        asian_result = sql_util.selectData('lq_asianOdds',
-                                         ['OddsID', 'ScheduleID', 'CompanyID', 'finished_gun'],
-                                         {'ScheduleID': scheduleID, 'CompanyID': companyID}, 0)
-        total_result = sql_util.selectData('lq_totalodds',
-                                           ['OddsID', 'ScheduleID', 'CompanyID', 'finished_gun'],
-                                           {'ScheduleID': scheduleID, 'CompanyID': companyID}, 0)
+        asian_result = sql_util.select_table_rows(
+            'lq_asianOdds',
+            ['OddsID', 'ScheduleID', 'CompanyID', 'finished_gun'],
+            {'ScheduleID': scheduleID, 'CompanyID': companyID},
+        )
+        total_result = sql_util.select_table_rows(
+            'lq_totalodds',
+            ['OddsID', 'ScheduleID', 'CompanyID', 'finished_gun'],
+            {'ScheduleID': scheduleID, 'CompanyID': companyID},
+        )
         asian_count = len(asian_result)
         total_count = len(total_result)
         # 第二版处理方案当前指数公司 比赛让分和大小都无开盘
@@ -157,10 +161,18 @@ class AsianTotalDetails(object):
         url = lqconfig_qt.AsianOddsDetail + '?' + 'id=' + str(scheduleID) + '&' + 'cid=' + str(
             companyID) + '&' + 't=6'
         print(url)
-        asianResults = sql_util.selectData('lq_AsianOdds', ['OddsID', 'ScheduleID', 'CompanyID'],
-                                         {'ScheduleID': scheduleID, 'CompanyID': companyID}, 1)
-        scoreResults = sql_util.selectData('lq_totalodds', ['OddsID', 'ScheduleID', 'CompanyID'],
-                                           {'ScheduleID': scheduleID, 'CompanyID': companyID}, 1)
+        asianResults = sql_util.select_table_rows(
+            'lq_AsianOdds',
+            ['OddsID', 'ScheduleID', 'CompanyID'],
+            {'ScheduleID': scheduleID, 'CompanyID': companyID},
+            isDis=True,
+        )
+        scoreResults = sql_util.select_table_rows(
+            'lq_totalodds',
+            ['OddsID', 'ScheduleID', 'CompanyID'],
+            {'ScheduleID': scheduleID, 'CompanyID': companyID},
+            isDis=True,
+        )
         if len(asianResults) > 0:
             asian_oddsID = asianResults[0][0]
         else:
@@ -174,7 +186,7 @@ class AsianTotalDetails(object):
             return details
         # 让分和总分至少开了一个，开始解析变化记录页面
         else:
-            response = WebUtil.requests_get(url, headers=lqconfig_qt.headers)
+            response = WebUtil.requests_get(url, headers=lqconfig_qt.headers, sourceName="lq_asian_total_detail")
             state = response[0]
             content = response[1]
             if state == 1 and content != '':
@@ -183,8 +195,11 @@ class AsianTotalDetails(object):
                                    '</td>\r\n</tr>\r\n<tr bgcolor="#FFFFFF">',
                                    content)
                     soup = BeautifulSoup(fixed, 'html.parser')
-                    result = sql_util.selectData('lq_schedule', ['scheduleID', 'MatchTime', 'MatchState'],
-                                                 {'scheduleID': int(scheduleID)}, 0)
+                    result = sql_util.select_table_rows(
+                        'lq_schedule',
+                        ['scheduleID', 'MatchTime', 'MatchState'],
+                        {'scheduleID': int(scheduleID)},
+                    )
                     matchtime = result[0][1]
                     tables = soup.find_all('table', class_='jtd')
                     if len(tables) > 0 and asian_oddsID:
