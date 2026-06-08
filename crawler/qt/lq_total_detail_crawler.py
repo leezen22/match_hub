@@ -58,8 +58,8 @@ class TotalDetailCrawler(object):
                    'finished_pre': self.finished_pre, 'finished_gun': self.finished_gun,
                    'keys_pre': self.qt_mobile_keys, "pre": []}
         if self.matchState is None:
-            result = LqMatchDao.selectData(['matchId', 'matchState'],
-                                           {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = LqMatchDao.select_dicts(['matchId', 'matchState'],
+                                             {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             details['matchState'] = matchState
         else:

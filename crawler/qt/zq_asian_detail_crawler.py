@@ -69,8 +69,8 @@ class AsianDetailCrawler(object):
             details['keys_gun'] = self.qt_gun_keys
             details['gun'] = []
         if self.matchState is None:
-            result = ZqMatchDao.selectData(['matchId', 'matchState'],
-                                           {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = ZqMatchDao.select_dicts(['matchId', 'matchState'],
+                                             {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             details['matchState'] = matchState
         else:

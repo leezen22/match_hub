@@ -35,7 +35,7 @@ class TotalScoreCrawler(object):
                     'matchState': self.matchState, 'finished': self.finished,
                     "odds": []}
         if self.matchState is None:
-            result = LqMatchDao.selectData(['matchId', 'matchState'], {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = LqMatchDao.select_dicts(['matchId', 'matchState'], {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             oddsData['matchState'] = matchState
         else:
@@ -117,8 +117,8 @@ class TotalScoreCrawler(object):
                     'matchState': self.matchState, 'finished': self.finished,
                     "odds": []}
         if self.matchState is None:
-            result = LqMatchDao.selectData(['matchId', 'matchState'],
-                                           {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = LqMatchDao.select_dicts(['matchId', 'matchState'],
+                                             {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             oddsData['matchState'] = matchState
         else:

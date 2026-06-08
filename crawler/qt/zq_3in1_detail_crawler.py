@@ -103,13 +103,13 @@ class DetailCrawler(object):
         headers = {"Host": self.qt_web_host}
         details = {'state': 0, 'matchId': self.matchId, 'companyId': self.companyId, 'scheduleId': self.scheduleId}
         if self.matchState is None:
-            result = ZqMatchDao.selectData(['matchId', 'matchState'], {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = ZqMatchDao.select_dicts(['matchId', 'matchState'], {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             details['matchState'] = matchState
         else:
             details['matchState'] = self.matchState
         if self.matchTime is None:
-            result = ZqMatchDao.selectData(['matchId', 'matchTime'], {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = ZqMatchDao.select_dicts(['matchId', 'matchTime'], {'matchId': self.matchId}, isDis=True)
             matchTime = result[0]['matchTime']
             details['matchTime'] = matchTime
         else:

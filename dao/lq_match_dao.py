@@ -7,9 +7,18 @@ DictRow = Dict[str, Any]
 
 class LqMatchDao(object):
     @staticmethod
+    def select_rows(keys, condition, isDis=False, orderBy='') -> Tuple[Row, ...]:
+        return sql_util.select_table_rows('lq_schedule', keys, condition, isDis=isDis, orderBy=orderBy)
+
+    @staticmethod
+    def select_dicts(keys, condition, isDis=False, orderBy='') -> Tuple[DictRow, ...]:
+        return sql_util.select_table_dicts('lq_schedule', keys, condition, isDis=isDis, orderBy=orderBy)
+
+    @staticmethod
     def selectData(keys, condition, isDis=False, isDict=False, orderBy='') -> Any:
-        data = sql_util.selectData('lq_schedule', keys, condition, isDis, isDict, orderBy)
-        return data
+        if isDict:
+            return LqMatchDao.select_dicts(keys, condition, isDis=isDis, orderBy=orderBy)
+        return LqMatchDao.select_rows(keys, condition, isDis=isDis, orderBy=orderBy)
 
     @staticmethod
     @overload
@@ -29,7 +38,7 @@ class LqMatchDao(object):
     @staticmethod
     def update(data, condition, keys=None, isDict=True, judge=False):
         if judge:
-            results = sql_util.selectData('lq_schedule', [], condition)
+            results = LqMatchDao.select_rows([], condition)
             # 比赛已入库
             if len(results) > 0:
                 # 比赛完场或异常

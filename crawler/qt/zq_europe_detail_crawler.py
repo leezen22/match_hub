@@ -48,8 +48,8 @@ class EuropeDetailCrawler(object):
                    'finished_pre': self.finished_pre, 'finished_in': self.finished_in,
                    'keys_pre': self.qt_pre_keys, "pre": []}
         if self.matchState is None:
-            result = ZqMatchDao.selectData(['matchId', 'matchState'],
-                                           {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = ZqMatchDao.select_dicts(['matchId', 'matchState'],
+                                             {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             details['matchState'] = matchState
         else:

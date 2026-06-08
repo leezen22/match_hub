@@ -55,7 +55,7 @@ class EuropeOddsCrawler(object):
         oddsData = {'state': 0, 'matchId': self.matchId, 'scheduleId': self.scheduleId,
                     'matchState': self.matchState, 'eurOdds_f': self.eurOdds_f, "odds": []}
         if self.matchState is None:
-            result = LqMatchDao.selectData(['matchId', 'matchState'], {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = LqMatchDao.select_dicts(['matchId', 'matchState'], {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             oddsData['matchState'] = matchState
         else:
@@ -83,8 +83,8 @@ class EuropeOddsCrawler(object):
                     'matchState': self.matchState, 'eurOdds_f': self.eurOdds_f,
                     "odds": []}
         if self.matchState is None:
-            result = LqMatchDao.selectData(['matchId', 'matchState'],
-                                           {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = LqMatchDao.select_dicts(['matchId', 'matchState'],
+                                             {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             oddsData['matchState'] = matchState
         else:
@@ -129,8 +129,8 @@ class EuropeOddsCrawler(object):
     def qt_web_load_europeJS(self):
         state = 0
         if self.matchTime is None or self.matchSeason is None or self.leagueId is None:
-            result = LqMatchDao.selectData(['matchId', 'matchState', 'matchTime', 'matchSeason', 'leagueId'],
-                                           {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = LqMatchDao.select_dicts(['matchId', 'matchState', 'matchTime', 'matchSeason', 'leagueId'],
+                                             {'matchId': self.matchId}, isDis=True)
             matchTime = result[0]['matchTime']
             season = result[0]['matchSeason']
             leagueId = result[0]['leagueId']

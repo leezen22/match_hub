@@ -39,7 +39,7 @@ class AsianOddsCrawler(object):
                     'matchState': self.matchState, 'finished': self.finished,
                     "odds": []}
         if self.matchState is None:
-            result = ZqMatchDao.selectData(['matchId', 'matchState'], {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = ZqMatchDao.select_dicts(['matchId', 'matchState'], {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             oddsData['matchState'] = matchState
         else:
@@ -68,8 +68,8 @@ class AsianOddsCrawler(object):
                     'matchState': self.matchState, 'finished': self.finished,
                     "odds": []}
         if self.matchState is None:
-            result = ZqMatchDao.selectData(['matchId', 'matchState'],
-                                           {'matchId': self.matchId}, isDis=True, isDict=True)
+            result = ZqMatchDao.select_dicts(['matchId', 'matchState'],
+                                             {'matchId': self.matchId}, isDis=True)
             matchState = result[0]['matchState']
             oddsData['matchState'] = matchState
         else:
