@@ -1,0 +1,11 @@
+﻿venv/
+__pycache__/
+*.pyc
+*.pyo
+.idea/
+.pytest_cache/
+logs/
+data/
+tmp_debug_logs/
+.env
+config/db_config.local.py
