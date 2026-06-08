@@ -1,11 +1,10 @@
 import os
 from datetime import datetime
 from pathlib import Path
-import js2py
 from config import zqconfig_qt
 from crawler.qt.zq_europe_odds_crawler import EuropeOddsCrawler
 from crawler.qt.zq_total_odds_crawler import TotalOddsCrawler
-from utils import sql_util, sql_util_local
+from utils import js2pyUtil, sql_util, sql_util_local
 from utils.dateUtil import utc2local, getNowTime
 from utils.fileUtil import dirFiles, copyfile
 from utils.webUtil import WebUtil
@@ -154,8 +153,14 @@ class EuropeOddsZq(object):
             jscontent = file.read()
             jscontent = fixed_content + jscontent
             file.close()
-            context = js2py.EvalJs()
-            context.execute(jscontent)
+            parse_result = js2pyUtil.js2c(
+                jscontent,
+                source=filepath,
+                required_names=("MatchTime", "game"),
+            )
+            if parse_result[0] != 1:
+                return result
+            context = parse_result[1]
             utctime_str = context.MatchTime
             matchTime = EuropeOddsZq.getLocaltime(utctime_str)
             currentScheduleID = context.ScheduleID

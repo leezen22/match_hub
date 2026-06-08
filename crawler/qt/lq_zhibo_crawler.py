@@ -1,8 +1,8 @@
 import re
 import threading
-import js2py
 from bs4 import BeautifulSoup
 from config import scrawler_config
+from utils import js2pyUtil
 from utils.webUtil import WebUtil
 
 
@@ -189,8 +189,14 @@ def mobile_get_partScore(script_tag, matchId, scheduleId):
     partScore = {'state': 0, 'matchId': matchId, 'scheduleId': scheduleId, 'data': {}}
     if script_tag is not None:
         script = str(script_tag).replace('<script type="text/javascript">', '').replace('</script>', '').strip()
-        context = js2py.EvalJs()
-        context.execute(script)
+        parse_result = js2pyUtil.js2c(
+            script,
+            source="lq_zhibo_mobile_part_score:{0}".format(scheduleId),
+            required_names=("techData",),
+        )
+        if parse_result[0] != 1:
+            return partScore
+        context = parse_result[1]
         techData = context.techData.to_dict()
         if "generalInfo" in techData.keys():
             if 'stateCode' in techData['generalInfo'].keys():

@@ -1,11 +1,11 @@
 import datetime
 import random
 import time
-import js2py
-import requests
 from bs4 import BeautifulSoup
 from config import scrawler_config, common_config
 from utils import sql_util_local
+from utils import js2pyUtil
+from utils.webUtil import WebUtil
 
 def get_halfodds_goals(scheduleID, companyID):
     odds_data = None
@@ -20,12 +20,26 @@ def get_halfodds_goals(scheduleID, companyID):
                                    'image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
                          }
     try:
-        odds_html = requests.get(first_odds_url, headers=bf_mobile_headers, timeout=5).text
+        web_response = WebUtil.requests_get(
+            first_odds_url,
+            headers=bf_mobile_headers,
+            timeout=5,
+            sourceName="zq_halfodds_goals",
+        )
+        if web_response[0] != 1:
+            return odds_data
+        odds_html = web_response[1]
         soup = BeautifulSoup(odds_html, 'html.parser')
         odds_script = soup.find('script')
         if odds_script:
-            context = js2py.EvalJs()
-            context.execute(odds_script.get_text())
+            parse_result = js2pyUtil.js2c(
+                odds_script.get_text(),
+                source=first_odds_url,
+                required_names=("oddsData",),
+            )
+            if parse_result[0] != 1:
+                return odds_data
+            context = parse_result[1]
             odds_data = context.oddsData
     except Exception as e:
         print(first_odds_url)

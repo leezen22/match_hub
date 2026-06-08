@@ -1,10 +1,9 @@
 import re
 from datetime import datetime
-import js2py
 from bs4 import BeautifulSoup
 from config import scrawler_config
 from dao.lq_match_dao import LqMatchDao
-from utils import sql_util
+from utils import js2pyUtil, sql_util
 from utils.dateUtil import utc2local, getNowTime
 from utils.fileUtil import copyfile
 from utils.webUtil import WebUtil
@@ -98,9 +97,17 @@ class EuropeOddsCrawler(object):
                 soup = BeautifulSoup(webResponse[1], "html.parser")
                 pattern = re.compile(r"var hData", re.MULTILINE | re.DOTALL)
                 script_tag = soup.find("script", text=pattern)
+                if script_tag is None:
+                    return oddsData
                 script = str(script_tag).replace('<script type="text/javascript">', '').replace('</script>', '').strip()
-                context = js2py.EvalJs()
-                context.execute(script)
+                parse_result = js2pyUtil.js2c(
+                    script,
+                    source=self.qt_mobile_url,
+                    required_names=("hData",),
+                )
+                if parse_result[0] != 1:
+                    return oddsData
+                context = parse_result[1]
                 hData = context.hData
                 for item in hData:
                     if item['ct'] == 1:
@@ -153,10 +160,14 @@ def get_byJS(jsContent, matchId, scheduleId=None, hasDetail=True):
     try:
         fixed_content = " var ScheduleID; var game; var gameDetail;"
         jsContent = fixed_content + jsContent
-        context = js2py.EvalJs()
-        context.execute(jsContent)
-        context = js2py.EvalJs()
-        context.execute(jsContent)
+        parse_result = js2pyUtil.js2c(
+            jsContent,
+            source="lq_europe_odds_js:{0}".format(scheduleId or matchId),
+            required_names=("MatchTime", "game"),
+        )
+        if parse_result[0] != 1:
+            return oddsData
+        context = parse_result[1]
         utctime_str = context.MatchTime
         matchTime = getLocaltime(utctime_str)
         scheduleId = context.ScheduleID

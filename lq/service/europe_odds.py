@@ -1,10 +1,9 @@
-import js2py
 import os
 from datetime import datetime
 from pathlib import Path
 
 from config import lqconfig_qt
-from utils import sql_util
+from utils import js2pyUtil, sql_util
 from utils.dateUtil import utc2local, getNowTime
 from utils.fileUtil import dirFiles
 from utils.webUtil import WebUtil
@@ -115,8 +114,14 @@ class EuropeOddsLq(object):
             jsContent = file.read()
             jsContent = fixed_content + jsContent
             file.close()
-            context = js2py.EvalJs()
-            context.execute(jsContent)
+            parse_result = js2pyUtil.js2c(
+                jsContent,
+                source=filepath,
+                required_names=("MatchTime", "game"),
+            )
+            if parse_result[0] != 1:
+                return result
+            context = parse_result[1]
             utctime_str = context.MatchTime
             matchtime = EuropeOddsLq.getLocaltime(utctime_str)
             ScheduleID = context.ScheduleID

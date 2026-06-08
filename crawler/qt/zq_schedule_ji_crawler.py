@@ -1,7 +1,7 @@
 import time
 from datetime import datetime, timedelta
-import js2py
 from config import scrawler_config
+from utils import js2pyUtil
 from utils.webUtil import WebUtil
 import xml.etree.ElementTree as ET
 
@@ -110,8 +110,10 @@ class ScheduleCrawler(object):
             odds_scheIds = oddsData['odds'].keys()
             # fixed = "var ShowBf= function (){};" + webResponse[1]
             fixed = webResponse[1].replace("ShowBf();", "")
-            context = js2py.EvalJs()
-            context.execute(fixed)
+            parse_result = js2pyUtil.js2c(fixed, source=self.qt_web_bf_url, required_names=("A",))
+            if parse_result[0] != 1:
+                return result
+            context = parse_result[1]
             A = context.A
             for i in range(1, len(A)):
                 score = QtWebJiScore(A[i])
@@ -129,8 +131,10 @@ class ScheduleCrawler(object):
         if webResponse[0] == 1:
             # fixed = "var ShowBf= function (){};" + webResponse[1]
             fixed = webResponse[1].replace("ShowBf();", "")
-            context = js2py.EvalJs()
-            context.execute(fixed)
+            parse_result = js2pyUtil.js2c(fixed, source=self.qt_web_bf_url, required_names=("A",))
+            if parse_result[0] != 1:
+                return result
+            context = parse_result[1]
             A = context.A
             for i in range(1, len(A)):
                 score = QtWebJiScore(A[i])
