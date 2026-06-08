@@ -147,7 +147,7 @@ class OddsDetailZq(object):
         asian_sql = "SELECT oddsID,companyID,finished_pre,finished_gun,hasPre,hasIn,hasFirst,hasHalf,hasSecond " \
                   "FROM zq_AsianOdds " \
                   "WHERE scheduleID ={0} and companyID={1}".format(scheduleID, companyID)
-        result = sql_util.select_Execute(asian_sql)
+        result = sql_util.select_rows(asian_sql)
         if len(result) > 0:
             oddsID = result[0][0]
             collect['oddsID'] = oddsID
@@ -176,7 +176,7 @@ class OddsDetailZq(object):
         total_sql = "SELECT oddsID,companyID,finished_pre,finished_gun,hasPre,hasIn,hasFirst,hasHalf,hasSecond " \
                     "FROM zq_totalScore " \
                     "WHERE scheduleID ={0} and companyID={1}".format(scheduleID, companyID)
-        result = sql_util.select_Execute(total_sql)
+        result = sql_util.select_rows(total_sql)
         if len(result) > 0:
             oddsID = result[0][0]
             collect['oddsID'] = oddsID
@@ -237,7 +237,7 @@ class OddsDetailZq(object):
         eur_sql = "SELECT oddsID,companyID,finished_pre,finished_gun,hasPre,hasIn,hasFirst,hasHalf,hasSecond,oddsID_Q " \
                   "FROM zq_europe " \
                   "WHERE scheduleID ={0} and companyID={1}".format(scheduleID, companyID)
-        result = sql_util.select_Execute(eur_sql)
+        result = sql_util.select_rows(eur_sql)
         if len(result) > 0:
             oddsID = result[0][0]
             oddsID_Q = result[0][9]

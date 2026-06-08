@@ -38,7 +38,7 @@ class EuropeOddsLq(object):
     def upOdds_byfile(filePath):
         matchid = os.path.basename(filePath).split(".")[0]
         sql = "SELECT eurodds_f,matchState FROM `lq_schedule` WHERE scheduleID={0}".format(matchid)
-        data = sql_util.select_Execute(sql)
+        data = sql_util.select_rows(sql)
         if len(data) > 0 and data[0][0] != 2 and data[0][1] == -1 and os.path.exists(filePath):
             result = EuropeOddsLq.get_odds_byfile(filePath)
             if result['state'] == 1 and matchid == str(result['matchid']):
@@ -55,10 +55,10 @@ class EuropeOddsLq(object):
                     result_detail = sql_util.insetMany('lq_europedetail', detail_keys, detail_values)
                 if data[0][0] == 1:
                     select_europe_sql = "SELECT oddsID_q FROM lq_europe WHERE ScheduleID= {0}".format(matchid)
-                    select_europe_result = sql_util.select_Execute(select_europe_sql)
+                    select_europe_result = sql_util.select_rows(select_europe_sql)
                     select_detail_sql = " SELECT * FROM lq_europedetail WHERE OddsID_Q in " \
                                         "(SELECT OddsID_Q FROM lq_europe WHERE scheduleID={0})".format(matchid)
-                    select_detail_result = sql_util.select_Execute(select_detail_sql)
+                    select_detail_result = sql_util.select_rows(select_detail_sql)
                     if len(select_europe_result) == 0:
                         result_odds = sql_util.insetMany('lq_europe', odds_keys, odds_values)
                     else:

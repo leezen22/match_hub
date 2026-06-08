@@ -135,7 +135,7 @@ class AsianOddsZq(object):
             else:
                 count = len(details)
                 sql = " select count(*) from zq_AsianOddsDetail where oddsID={0} ".format(oddsID)
-                old = sql_util.select_Execute(sql)
+                old = sql_util.select_rows(sql)
                 count_old = old[0][0]
                 if count > count_old:
                     new = details[count_old:count]

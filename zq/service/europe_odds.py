@@ -80,7 +80,7 @@ class EuropeOddsZq(object):
                     else:
                         inSql = " select count(*) from zq_europeDetail where oddsID={0} " \
                                 "and matchState in {1} ".format(oddsID, "(1,2,3)")
-                        old_in = sql_util.select_Execute(inSql)
+                        old_in = sql_util.select_rows(inSql)
                         count_oldIn = old_in[0][0]
                         new_in = details_gun[count_oldIn:]
                         result = sql_util.insetMany('zq_europeDetail', columns, new_in)
@@ -275,7 +275,7 @@ class EuropeOddsZq(object):
         matchID = int(fileName.split("_")[0])
         scheduleID = int(fileName.split("_")[1])
         sql = "SELECT eurodds_f,matchState,matchTime FROM `zq_schedule` WHERE matchID={0}".format(matchID)
-        data = sql_util.select_Execute(sql)
+        data = sql_util.select_rows(sql)
         # if len(data) > 0 and data[0][0] != 2 and data[0][1] == -1:
         if len(data) > 0 and data[0][1] == -1:
             year = data[0][2].year
@@ -299,11 +299,11 @@ class EuropeOddsZq(object):
 
                 elif data[0][0] == 1:
                     select_europe_sql = "SELECT count(*) FROM zq_europe WHERE matchID= {0}".format(matchID)
-                    select_europe_result = sql_util.select_Execute(select_europe_sql)
+                    select_europe_result = sql_util.select_rows(select_europe_sql)
                     select_detail_sql = " SELECT count(*) FROM {0} WHERE oddsID_Q in " \
                                         "(SELECT OddsID_Q FROM zq_europe WHERE matchID = {1})" \
                         .format(detail_tableName, matchID)
-                    select_detail_result = sql_util.select_Execute(select_detail_sql)
+                    select_detail_result = sql_util.select_rows(select_detail_sql)
                     count_detail = select_detail_result[0][0]
                     count_europe = select_europe_result[0][0]
                     if count_europe == 0:
@@ -322,7 +322,7 @@ class EuropeOddsZq(object):
                     select_detail_sql = " SELECT count(*) FROM {0} WHERE oddsID_Q in " \
                                         "(SELECT OddsID_Q FROM zq_europe WHERE matchID = {1})" \
                         .format(detail_tableName, matchID)
-                    select_detail_result = sql_util.select_Execute(select_detail_sql)
+                    select_detail_result = sql_util.select_rows(select_detail_sql)
                     count_detail = select_detail_result[0][0]
                     if count_detail == 0:
                         if result_odds:
@@ -433,7 +433,7 @@ class EuropeOddsZq(object):
         matchID = int(fileName.split("_")[0])
         scheduleID = int(fileName.split("_")[1])
         sql = "SELECT eurodds_f,matchState,matchTime FROM `zq_schedule` WHERE matchID={0}".format(matchID)
-        data = sql_util_local.select_Execute(sql)
+        data = sql_util_local.select_rows(sql)
         # if len(data) > 0 and data[0][0] != 2 and data[0][1] == -1:
         if len(data) > 0 and data[0][1] == -1:
             year = data[0][2].year
@@ -457,11 +457,11 @@ class EuropeOddsZq(object):
 
                 elif data[0][0] == 1:
                     select_europe_sql = "SELECT count(*) FROM zq_europe WHERE matchID= {0}".format(matchID)
-                    select_europe_result = sql_util_local.select_Execute(select_europe_sql)
+                    select_europe_result = sql_util_local.select_rows(select_europe_sql)
                     select_detail_sql = " SELECT count(*) FROM {0} WHERE oddsID_Q in " \
                                         "(SELECT OddsID_Q FROM zq_europe WHERE matchID = {1})" \
                         .format(detail_tableName, matchID)
-                    select_detail_result = sql_util_local.select_Execute(select_detail_sql)
+                    select_detail_result = sql_util_local.select_rows(select_detail_sql)
                     count_detail = select_detail_result[0][0]
                     count_europe = select_europe_result[0][0]
                     if count_europe == 0:
@@ -480,7 +480,7 @@ class EuropeOddsZq(object):
                     select_detail_sql = " SELECT count(*) FROM {0} WHERE oddsID_Q in " \
                                         "(SELECT OddsID_Q FROM zq_europe WHERE matchID = {1})" \
                         .format(detail_tableName, matchID)
-                    select_detail_result = sql_util_local.select_Execute(select_detail_sql)
+                    select_detail_result = sql_util_local.select_rows(select_detail_sql)
                     count_detail = select_detail_result[0][0]
                     if count_detail == 0:
                         if result_odds:
