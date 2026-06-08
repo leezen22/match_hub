@@ -43,7 +43,7 @@ def task_upDetail_zq():
     and sche.matchState=-1 and sche.matchTime>='{0}' and sche.matchTime <'{1}'
     ORDER BY sche.matchTime desc
     """.format('2019-06-01 00:00', '2020-01-01 00:00')
-    result = sql_util.select_Execute(querySql)
+    result = sql_util.select_rows(querySql)
     companyID = 3
 
     product_alive = 2

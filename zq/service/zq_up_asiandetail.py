@@ -29,7 +29,7 @@ def task_up_detail():
                       AND sche.matchTime >= '{1}'
                       AND sche.matchTime < '{2}'
                       AND sche.matchState = - 1 """.format(3, '2018-01-01 00:00', '2019-01-01 00:00')
-    result = sql_util.select_Execute(querySql)
+    result = sql_util.select_rows(querySql)
     count = len(result)
     print('任务数量：', count)
 
