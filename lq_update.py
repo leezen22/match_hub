@@ -1,3 +1,4 @@
+import argparse
 import threading
 from typing import Any, Tuple, cast
 
@@ -42,7 +43,7 @@ def up_2in1Details_by_match(scheduleId,companyId, scope):
             and sche.scheduleId={0}
             and sche.matchState >=-1 order by sche.matchtime ASC
         """.format(scheduleId, companyId)
-    results = cast(Tuple[Tuple[Any, ...], ...], sql_util.select(sql,isDict=False))
+    results = cast(Tuple[Tuple[Any, ...], ...], sql_util.select_rows(sql))
     size = len(results)
     for item in results:
         print(str(companyId) + "变化记录剩余比赛：" + str(size) + ",最新 ：" + str(item))
@@ -106,9 +107,9 @@ def up_match_data(scheduleIdArr):
         totalsql = "SELECT scheduleID,leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
                    " WHERE totalodds_f in(0,1) and matchState>=-1 and scheduleId = {0} order by matchTime ASC ".format(matchId)
         # totalsql= {}
-        asianMatchList = sql_util.select(asiansql)
+        asianMatchList = sql_util.select_rows(asiansql)
         print(asianMatchList)
-        totalMatchList = sql_util.select(totalsql)
+        totalMatchList = sql_util.select_rows(totalsql)
         print(totalMatchList)
         if len(asianMatchList)>0:
             match=asianMatchList[0]
@@ -123,15 +124,65 @@ def up_match_data(scheduleIdArr):
         up_2in1Details_by_match(matchId, 8, 3)
         up_2in1Details_by_match(matchId, 3, 3)
 
-if __name__ == '__main__':
-    # upScheJsLocal()
+def update_schedule_js():
     upScheJs()
+
+
+def update_schedule():
     upSchedule()
+
+
+def update_score():
     upPartscore()
+
+
+def update_odds():
     LqOddsService.upOdds()
+
+
+def update_details():
     LqOddsService.up_2in1Details_byCid(8, 3)
     LqOddsService.up_2in1Details_byCid(3, 3)
+
+
+def run_all():
+    update_schedule_js()
+    update_schedule()
+    update_score()
+    update_odds()
+    update_details()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run basketball update tasks.")
+    parser.add_argument(
+        "stage",
+        nargs="?",
+        default="all",
+        choices=["all", "schedule-js", "schedule", "score", "odds", "details", "schedule-local"],
+        help="Task stage to run. Default: all.",
+    )
+    args = parser.parse_args()
+
+    if args.stage == "all":
+        run_all()
+    elif args.stage == "schedule-js":
+        update_schedule_js()
+    elif args.stage == "schedule":
+        update_schedule()
+    elif args.stage == "score":
+        update_score()
+    elif args.stage == "odds":
+        update_odds()
+    elif args.stage == "details":
+        update_details()
+    elif args.stage == "schedule-local":
+        upScheJsLocal()
     # LQleague.getSchejsPending([1,'NBA',1])
 
     # scheduleIdArr=['716461','716852','716893','716682','704952','704953','716927','704954','714911','716514','716933','716934','667640']
     # up_match_data(scheduleIdArr)
+
+
+if __name__ == '__main__':
+    main()

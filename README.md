@@ -9,6 +9,21 @@ Main commands:
 .\venv\Scripts\python.exe zq_update.py
 ```
 
+Run one update stage:
+
+```powershell
+.\venv\Scripts\python.exe lq_update.py schedule-js
+.\venv\Scripts\python.exe lq_update.py schedule
+.\venv\Scripts\python.exe lq_update.py score
+.\venv\Scripts\python.exe lq_update.py odds
+.\venv\Scripts\python.exe lq_update.py details
+
+.\venv\Scripts\python.exe zq_update.py schedule-js
+.\venv\Scripts\python.exe zq_update.py schedule
+.\venv\Scripts\python.exe zq_update.py score
+.\venv\Scripts\python.exe zq_update.py odds --start-time "2026-05-05 00:00:00"
+```
+
 Local database config:
 
 ```powershell
