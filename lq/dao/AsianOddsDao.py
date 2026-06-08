@@ -21,10 +21,13 @@ def upAsianOddsBymid(scheduleID, finished):
             elif finished == 1:
                 for asianOdds in asianOddsDict['odds']:
                     results = cast(Tuple[Tuple[Any, ...], ...],
-                                   sql_util.selectData('lq_asianOdds', ['oddsID'],
-                                                       {'scheduleID': asianOdds['ScheduleID'],
-                                                        'companyID': asianOdds['CompanyID']},
-                                                       True))
+                                   sql_util.select_table_rows(
+                                       'lq_asianOdds',
+                                       ['oddsID'],
+                                       {'scheduleID': asianOdds['ScheduleID'],
+                                        'companyID': asianOdds['CompanyID']},
+                                       isDis=True,
+                                   ))
                     asianOdds['modifyTime'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     if len(results) > 0:
                         condition = {'scheduleID': asianOdds['ScheduleID'], 'companyID': asianOdds['CompanyID']}
@@ -60,8 +63,12 @@ def delAsianOdds(leagueId, seasons):
 # 根据比赛ID删除让分赔率信息
 def delAsianOddsBymid(matchid):
     oddslist = cast(Tuple[Tuple[Any, ...], ...],
-                    sql_util.selectData('lq_AsianOdds', ['oddsID', 'scheduleID', 'companyID'],
-                                        {'scheduleID': matchid}, True, False))
+                    sql_util.select_table_rows(
+                        'lq_AsianOdds',
+                        ['oddsID', 'scheduleID', 'companyID'],
+                        {'scheduleID': matchid},
+                        isDis=True,
+                    ))
     for odds in oddslist:
         sql_util.delData('asianOddsdetail', {'oddsID': odds[0]})
     sql_util.delData('lq_asianOdds', {'scheduleID': matchid})

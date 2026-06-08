@@ -30,9 +30,13 @@ def upTotalOddsBymid(scheduleID, finished):
             else:
                 for odds in totaloddsdict['odds']:
                     results = cast(Tuple[Tuple[Any, ...], ...],
-                                   sql_util.selectData('lq_totalodds', ['OddsID'],
-                                                       {'ScheduleID': odds['ScheduleID'],
-                                                        'CompanyID': odds['CompanyID']}, True))
+                                   sql_util.select_table_rows(
+                                       'lq_totalodds',
+                                       ['OddsID'],
+                                       {'ScheduleID': odds['ScheduleID'],
+                                        'CompanyID': odds['CompanyID']},
+                                       isDis=True,
+                                   ))
                     odds['ModifyTime'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     if len(results) > 0:
                         condition = {'ScheduleID': odds['ScheduleID'], 'CompanyID': odds['CompanyID']}
@@ -56,8 +60,12 @@ def deltotalOdds(leagueId, seasons):
 # 根据比赛ID删除让分赔率信息
 def deltotalOddsBymid(matchid):
     oddslist = cast(Tuple[Tuple[Any, ...], ...],
-                    sql_util.selectData('lq_totalodds', ['OddsID', 'ScheduleID', 'CompanyID'],
-                                        {'ScheduleID': matchid}, True, False))
+                    sql_util.select_table_rows(
+                        'lq_totalodds',
+                        ['OddsID', 'ScheduleID', 'CompanyID'],
+                        {'ScheduleID': matchid},
+                        isDis=True,
+                    ))
     print("删除让分指数：")
     print(oddslist)
     for odds in oddslist:

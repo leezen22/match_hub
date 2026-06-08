@@ -9,10 +9,12 @@ from utils import sql_util
 
 # 根据字典参数筛选
 def selectMatch(condition):
-    results = sql_util.selectData('lq_schedule', ['scheduleID', 'leagueId', 'matchSeason',
-                                                  'matchState', 'partscore_f', 'asianodds_f', 'totalodds_f', 'matchID'],
-                                  condition,
-                                  1)
+    results = sql_util.select_table_rows(
+        'lq_schedule',
+        ['scheduleID', 'leagueId', 'matchSeason', 'matchState', 'partscore_f', 'asianodds_f', 'totalodds_f', 'matchID'],
+        condition,
+        isDis=True,
+    )
     return results
 
 
@@ -23,8 +25,12 @@ def upMatchBychejs(matchlist):
 
 
 def upMachByOne(match):
-    results = sql_util.selectData('lq_schedule', ['scheduleID', 'matchState', 'matchTime'],
-                                  {'scheduleID': match['scheduleID']}, 1)
+    results = sql_util.select_table_rows(
+        'lq_schedule',
+        ['scheduleID', 'matchState', 'matchTime'],
+        {'scheduleID': match['scheduleID']},
+        isDis=True,
+    )
     condition = {'scheduleID': match['scheduleID']}
     # 比赛未入本地库
     if len(results) == 0:
