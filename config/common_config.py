@@ -4,6 +4,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LOG_DIR = PROJECT_ROOT / "logs"
 
+# Text logs are diagnostic files, not long-term storage. Rotate them before
+# each append so request/parse failures cannot grow without bound.
+LOG_MAX_BYTES = 1024 * 1024
+LOG_BACKUP_COUNT = 3
+
 fileread_e = str(LOG_DIR / 'fileread_e.txt')
 js2pylocal_e = str(LOG_DIR / 'js2pylocal_e.txt')
 js2pyweb_e = str(LOG_DIR / 'js2pyweb_e.txt')

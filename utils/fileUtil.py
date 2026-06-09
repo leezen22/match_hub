@@ -3,10 +3,29 @@ import shutil
 from config import common_config
 from utils.dateUtil import getNowTime
 
+def rotate_log_if_needed(file_path, max_bytes=None, backup_count=None):
+    max_bytes = common_config.LOG_MAX_BYTES if max_bytes is None else max_bytes
+    backup_count = common_config.LOG_BACKUP_COUNT if backup_count is None else backup_count
+    if max_bytes <= 0 or backup_count < 1 or not os.path.exists(file_path):
+        return
+    if os.path.getsize(file_path) < max_bytes:
+        return
+
+    oldest = "{0}.{1}".format(file_path, backup_count)
+    if os.path.exists(oldest):
+        os.remove(oldest)
+    for index in range(backup_count - 1, 0, -1):
+        src = "{0}.{1}".format(file_path, index)
+        dest = "{0}.{1}".format(file_path, index + 1)
+        if os.path.exists(src):
+            os.replace(src, dest)
+    os.replace(file_path, "{0}.1".format(file_path))
+
 
 # 按行记录日志
 def logLine(file, logContent):
     logContent = str([getNowTime(), logContent]) + ', \n'
+    rotate_log_if_needed(file)
     fileWrite(file, "a+", logContent)
 
 
