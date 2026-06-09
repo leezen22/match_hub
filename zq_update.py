@@ -10,6 +10,8 @@ from zq.service.total_odds import TotalOddsZq
 from zq.service.zq_st_goals import TotalStZq
 from zq.service.zq_up_odds import upAsianTotalDetails
 
+DEFAULT_ODDS_START_TIME = '2026-05-05 00:00:00'
+
 
 def _pending_schedule_files():
     files = []
@@ -43,14 +45,14 @@ def update_score():
     upMatchScore()
 
 
-def update_odds(start_time='2026-05-05 00:00:00'):
+def update_odds(start_time=DEFAULT_ODDS_START_TIME):
     TotalOddsZq.up_odds_mobile(start_time)
     AsianOddsZq.up_odds_mobile(start_time)
     upAsianTotalDetails(3, start_time)
     TotalOddsZq.update_halfgoals(start_time)
 
 
-def run_all(start_time='2026-05-05 00:00:00'):
+def run_all(start_time=DEFAULT_ODDS_START_TIME):
     update_schedule_js()
     update_schedule()
     update_score()
@@ -68,7 +70,7 @@ def main():
     )
     parser.add_argument(
         "--start-time",
-        default="2026-05-05 00:00:00",
+        default=DEFAULT_ODDS_START_TIME,
         help="Start time for odds tasks.",
     )
     args = parser.parse_args()
@@ -92,11 +94,4 @@ def main():
 
 
 if __name__ == '__main__':
-    update_schedule_js()
-    update_schedule_js_local()
-    update_schedule()
-    update_score()
-    update_odds('2026-05-05 00:00:00')
-    # TotalStZq.update_st('2026-04-20 00:00:00')
-    # TotalStZq.judgeHit()
-  
+    main()
