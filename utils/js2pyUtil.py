@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 import traceback
 from typing import Iterable, Optional
 
@@ -11,6 +12,7 @@ from utils.webUtil import WebUtil
 
 
 HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "</html>")
+JS2PY_EXEC_LOCK = threading.RLock()
 
 
 def _split_top_level_statements(content: str):
@@ -95,10 +97,12 @@ def parse_js_content(content: str, source: str, required_names: Optional[Iterabl
         return result
 
     try:
-        context = _execute_js(content)
+        with JS2PY_EXEC_LOCK:
+            context = _execute_js(content)
     except Exception as e:
         try:
-            context = _execute_js_by_statement(content)
+            with JS2PY_EXEC_LOCK:
+                context = _execute_js_by_statement(content)
         except Exception as fallback_error:
             logLine(
                 common_config.js2pyweb_e,
