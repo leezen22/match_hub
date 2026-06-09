@@ -110,7 +110,7 @@ def upData(table, data, condition):
 # 查找数据
 def selectData(table, keys, condition, isDis=False, isdict=False, orderBy=''):
     sql = get_s_sql(table, keys, condition, isdistinct=isDis)
-    if not orderBy:
+    if orderBy:
         sql = sql + " " + orderBy
     results = select_Execute(sql, isdict)
     return results
@@ -160,6 +160,7 @@ def sqlExecute(sql):
 
 def select_Execute(sql, isdict=False):
     results = []
+    db = None
     try:
         db = reConndb()
         if db:
@@ -170,10 +171,12 @@ def select_Execute(sql, isdict=False):
                 cursor = db.cursor()
             cursor.execute(sql)
             results = cursor.fetchall()
-            db.close()
     except Exception as e:
-        db.close()
         print(sql)
+        print(e)
+    finally:
+        if db:
+            db.close()
     return results
 
 

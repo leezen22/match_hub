@@ -166,6 +166,7 @@ def sqlExecute(sql):
 
 def select_Execute(sql, isdict=False):
     results = []
+    db = None
     try:
         db = reConndb()
         if db:
@@ -176,11 +177,12 @@ def select_Execute(sql, isdict=False):
                 cursor = db.cursor()
             cursor.execute(sql)
             results = cursor.fetchall()
-            db.close()
     except Exception as e:
-        db.close()
         print(sql)
         print(e)
+    finally:
+        if db:
+            db.close()
     return results
 
 
