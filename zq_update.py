@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 from config import zqconfig_qt
 from utils import fileUtil
@@ -94,10 +95,13 @@ def main():
 
 
 if __name__ == '__main__':
-    update_schedule_js()
-    update_schedule_js_local()
-    update_schedule()
-    update_score()
-    update_odds(DEFAULT_ODDS_START_TIME)
-    # TotalStZq.update_st('2026-04-20 00:00:00')
-    # TotalStZq.judgeHit()
+    if len(sys.argv) > 1:
+        main()
+    else:
+        update_schedule_js()
+        update_schedule_js_local()
+        update_schedule()
+        update_score()
+        update_odds(DEFAULT_ODDS_START_TIME)
+        # TotalStZq.update_st('2026-04-20 00:00:00')
+        # TotalStZq.judgeHit()

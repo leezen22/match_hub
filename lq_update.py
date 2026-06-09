@@ -1,4 +1,5 @@
 import argparse
+import sys
 import threading
 from typing import Any, Tuple, cast
 
@@ -185,9 +186,12 @@ def main():
 
 
 if __name__ == '__main__':
-    update_schedule_js()
-    # upScheJsLocal()
-    update_schedule()
-    update_score()
-    update_odds()
-    update_details()
+    if len(sys.argv) > 1:
+        main()
+    else:
+        update_schedule_js()
+        # upScheJsLocal()
+        update_schedule()
+        update_score()
+        update_odds()
+        update_details()
