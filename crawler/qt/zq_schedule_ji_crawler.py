@@ -439,20 +439,22 @@ def explainList(exList, homeTeam, awayTeam):
     if exList == "" or exList is None:
         return ""
     exText = []
-    gex4 = exList.split("")
+    separator = ";" if ";" in exList else "|"
+    gex4 = exList.split(separator)
+    gex4.extend([""] * (5 - len(gex4)))
     if gex4[0] != "":
-        exText.appen(gex4[0].replace(",", "分钟[") + "]")
+        exText.append(gex4[0].replace(",", "分钟[") + "]")
     if gex4[1] != "":
-        exText.appen("二回合[" + gex4[1] + "]")
+        exText.append("二回合[" + gex4[1] + "]")
     if gex4[2] != "":
-        exText.appen(gex4[2].replace("1,", "120分钟[").replace("2,", "加时[").replace("3,", "加时中[") + "]")
+        exText.append(gex4[2].replace("1,", "120分钟[").replace("2,", "加时[").replace("3,", "加时中[") + "]")
     if gex4[3] != "":
-        exText.appen("点球[" + gex4[3] + "]")
+        exText.append("点球[" + gex4[3] + "]")
     if gex4[4] == "1":
-        exText.appen(homeTeam + "赢")
+        exText.append(homeTeam + "赢")
     elif gex4[4] == "2":
-        exText.appen(awayTeam + "赢")
-    return exText.join(",")
+        exText.append(awayTeam + "赢")
+    return ",".join(exText)
 
 
 def Goal2GoalCn(goal):
