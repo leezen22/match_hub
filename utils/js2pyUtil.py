@@ -13,6 +13,55 @@ from utils.webUtil import WebUtil
 HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "</html>")
 
 
+def _split_top_level_statements(content: str):
+    statements = []
+    start = 0
+    quote = None
+    escaped = False
+    depth = 0
+    for index, char in enumerate(content):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in ("'", '"', "`"):
+            quote = char
+            continue
+        if char in "([{":
+            depth += 1
+            continue
+        if char in ")]}" and depth > 0:
+            depth -= 1
+            continue
+        if char == ";" and depth == 0:
+            statement = content[start:index + 1].strip()
+            if statement:
+                statements.append(statement)
+            start = index + 1
+
+    rest = content[start:].strip()
+    if rest:
+        statements.append(rest)
+    return statements
+
+
+def _execute_js(content: str):
+    context = js2py.EvalJs()
+    context.execute(content)
+    return context
+
+
+def _execute_js_by_statement(content: str):
+    context = js2py.EvalJs()
+    for statement in _split_top_level_statements(content):
+        context.execute(statement)
+    return context
+
+
 def _preview(content: str, limit: int = 300) -> str:
     text = re.sub(r"\s+", " ", content or "").strip()
     return text[:limit]
@@ -46,15 +95,28 @@ def parse_js_content(content: str, source: str, required_names: Optional[Iterabl
         return result
 
     try:
-        context = js2py.EvalJs()
-        context.execute(content)
+        context = _execute_js(content)
     except Exception as e:
-        logLine(
-            common_config.js2pyweb_e,
-            ["JS_PARSE_FAILED", source, repr(e), _preview(content), traceback.format_exc()],
-        )
-        print("JS parse failed: {0}".format(source))
-        print(e)
+        try:
+            context = _execute_js_by_statement(content)
+        except Exception as fallback_error:
+            logLine(
+                common_config.js2pyweb_e,
+                [
+                    "JS_PARSE_FAILED",
+                    source,
+                    repr(e),
+                    "FALLBACK_FAILED",
+                    repr(fallback_error),
+                    _preview(content),
+                    traceback.format_exc(),
+                ],
+            )
+            print("JS parse failed: {0}".format(source))
+            print(fallback_error)
+        else:
+            logLine(common_config.js2pyweb_e, ["JS_PARSE_FALLBACK_OK", source, repr(e)])
+            result = [1, context]
     else:
         result = [1, context]
     return result
