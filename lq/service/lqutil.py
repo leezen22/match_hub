@@ -33,7 +33,7 @@ class LqService(object):
     def up_scheduleJs(self):
         print(getNowTime() + "开始更新篮球赛程JS文件")
         headers = {'Host': scrawler_config.qt_lq_web_host}
-        result_lqNote = LqNoteDao.selectData(['ID', 'task', 'lastUpdateTime'], {'task': 'scheduleJs'}, isDis=True)
+        result_lqNote = LqNoteDao.select_rows(['ID', 'task', 'lastUpdateTime'], {'task': 'scheduleJs'}, isDis=True)
         lastUpdate_local = result_lqNote[0][2]
         crawler = LeagueCrawler()
         leagues = crawler.get_leagues_web()
@@ -84,7 +84,7 @@ class LqService(object):
 
     def up_schedule(self):
         print(getNowTime() + ' 开始解析JS文件并更新赛程')
-        result = LqNoteDao.selectData(['ID', 'task', 'lastUpdateTime'], {'task': 'schedule'}, isDis=True)
+        result = LqNoteDao.select_rows(['ID', 'task', 'lastUpdateTime'], {'task': 'schedule'}, isDis=True)
         updateTime_local = result[0][2]
         files_new = []
         new_dir = self.scheJs_localPend_dir + '/new/'

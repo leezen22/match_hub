@@ -56,7 +56,7 @@ class ScheduleJSCrawler(object):
                 scraw = {}
                 condition = {'leagueId': self.leagueId, 'matchSeason': season}
                 keys = ['Id', 'leagueId', 'matchSeason', 'seasonPath', 'season_f']
-                seasonCraw_result = SeasonCrawDao.selectData(keys, condition, isDict=False)
+                seasonCraw_result = SeasonCrawDao.select_rows(keys, condition)
                 if not (len(seasonCraw_result) > 0 and seasonCraw_result[0][4] == 2):
                     if len(seasonCraw_result) == 0:
                         scraw['leagueId'] = self.leagueId
@@ -74,7 +74,7 @@ class ScheduleJSCrawler(object):
                             keys = ['Id', 'scheKey', 'leagueId', 'matchSeason', 'fileName',
                                     'schePath', 'schePath', 'sche_f']
                             # 查询更新进度
-                            scheCraw_result = ScheduleCrawDao.selectData(keys, condition, isDis=False)
+                            scheCraw_result = ScheduleCrawDao.select_rows(keys, condition)
                             if len(scheCraw_result) == 0 or scheCraw_result[0][7] != 2:
                                 pendList.append(scheJS)
                                 if len(scheCraw_result) == 0:
