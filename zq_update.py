@@ -16,11 +16,8 @@ DEFAULT_ODDS_START_TIME = '2026-05-05 00:00:00'
 
 def _pending_schedule_files():
     files = []
-    for path in [zqconfig_qt.schedule_js_work_dir] + [
-        zqconfig_qt.schejs_pending + subdir for subdir in zqconfig_qt.schedule_js_legacy_pending_dirs
-    ]:
-        if os.path.isdir(path):
-            files.extend(fileUtil.dirFiles(path, []))
+    if os.path.isdir(zqconfig_qt.schedule_js_work_dir):
+        files.extend(fileUtil.dirFiles(zqconfig_qt.schedule_js_work_dir, []))
     return files
 
 
