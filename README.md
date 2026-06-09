@@ -9,6 +9,8 @@ Main commands:
 .\venv\Scripts\python.exe zq_update.py
 ```
 
+Running an update file with no arguments uses the selected task block at the bottom of that file. Edit that block when you want a personal run panel. Passing a stage argument uses the command-line wrapper below.
+
 Run one update stage:
 
 ```powershell

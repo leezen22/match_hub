@@ -39,6 +39,12 @@ def main():
     if not path.exists():
         print("WARNING: create config/db_config.local.py from config/db_config.sample.py before running updates.")
 
+    print("")
+    print("Default no-argument update tasks:")
+    print("lq_update.py: schedule-js, schedule, score, odds, details")
+    print("zq_update.py: schedule-js, schedule-js-local, schedule, score, odds")
+    print("Use a stage argument to run only one task, for example: zq_update.py odds --start-time \"2026-05-05 00:00:00\"")
+
 
 if __name__ == "__main__":
     main()
