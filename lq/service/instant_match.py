@@ -333,5 +333,6 @@ headers_score = {"Host": "lq3.titian007.com",
 ch_score_xml = 'http://lq3.titian007.com/NBA/change.xml'
 beginTime = '2019-11-08 20:00:00'
 endTime = '2019-11-09 20:00:00'
-initialMatchcache(beginTime, endTime)
-upInsMatch()
+if __name__ == '__main__':
+    initialMatchcache(beginTime, endTime)
+    upInsMatch()

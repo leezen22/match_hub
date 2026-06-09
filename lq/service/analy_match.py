@@ -253,4 +253,5 @@ def numformer(num):
 
 
 # evalPrechance(24, 25)
-evalPerform(362455)
+if __name__ == '__main__':
+    evalPerform(362455)
