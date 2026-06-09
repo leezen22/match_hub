@@ -99,9 +99,13 @@ class EuropeOddsLq(object):
             if not Path(filePath).exists():
                 result = WebUtil.loadfile(file_url, file_dir, headers, isProxy=isproxy, retry_time=2)
                 print(result, file_url)
+                if result == 1:
+                    EuropeOddsLq.upOdds_byfile(filePath)
                 # print([gettime(), result, match])
                 if result == 4:
                     sql_util.upData('lq_schedule', {'eurodds_f': 4}, {'scheduleID': matchid})
+            else:
+                EuropeOddsLq.upOdds_byfile(filePath)
 
     @staticmethod
     def get_odds_byfile(filepath):

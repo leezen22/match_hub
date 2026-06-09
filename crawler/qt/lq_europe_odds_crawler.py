@@ -5,7 +5,6 @@ from config import scrawler_config
 from dao.lq_match_dao import LqMatchDao
 from utils import js2pyUtil, sql_util
 from utils.dateUtil import utc2local, getNowTime
-from utils.fileUtil import copyfile
 from utils.webUtil import WebUtil
 
 
@@ -142,13 +141,10 @@ class EuropeOddsCrawler(object):
         matchYear = matchTime.year
         headers = {"Host": self.qt_web_host, "Referer": self.qt_web_referer}
         file_dir = "{0}\\{1}\\{2}\\".format(scrawler_config.lq_europJS_dir, leagueId, season)
-        pending_dir = "{0}\\{1}\\{2}\\".format(scrawler_config.lq_europJS_pending_dir, leagueId, season)
         file_name = "{0}_{1}".format(self.matchId, self.scheduleId) + ".js"
         filePath = file_dir + file_name
-        dest = pending_dir + file_name
         result = WebUtil.loadFileByName(self.qt_web_url, filePath, headers)
         if result == 1:
-            copyfile(filePath, dest)
             state = 1
         return state
 

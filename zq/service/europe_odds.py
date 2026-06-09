@@ -6,7 +6,7 @@ from crawler.qt.zq_europe_odds_crawler import EuropeOddsCrawler
 from crawler.qt.zq_total_odds_crawler import TotalOddsCrawler
 from utils import js2pyUtil, sql_util, sql_util_local
 from utils.dateUtil import utc2local, getNowTime
-from utils.fileUtil import dirFiles, copyfile
+from utils.fileUtil import dirFiles
 from utils.webUtil import WebUtil
 
 
@@ -16,7 +16,7 @@ class EuropeOddsZq(object):
     @staticmethod
     def task_upodds_byfile():
         year = input("请输入比赛时间时间(年)： ")
-        files = dirFiles(zqconfig_qt.europjs_pending_dir + year + "\\", [])
+        files = dirFiles(zqconfig_qt.europjs_dir + year + "\\", [])
         count = len(files)
         for file in files:
             EuropeOddsZq.upOdds_byFile(file)
@@ -254,18 +254,17 @@ class EuropeOddsZq(object):
             file_url = zqconfig_qt.europejs_url + str(scheduleID) + ".js"
             file_dir = "{0}{1}\\{2}\\{3}\\".format(zqconfig_qt.europjs_dir, matchYear, leagueID, season)
             # zqconfig_qt.europjs_dir + str(leagueID) + "\\" + season + "\\"
-            pending_dir = "{0}{1}\\{2}\\{3}\\".format(zqconfig_qt.europjs_pending_dir, matchYear, leagueID, season)
-            # zqconfig_qt.europjs_pending_dir + str(leagueID) + "\\" + season + "\\"
             file_name = "{0}_{1}".format(matchID, scheduleID) + ".js"
             filePath = file_dir + file_name
-            dest = pending_dir + file_name
             if not Path(filePath).exists():
                 result = WebUtil.loadFileByName(file_url, filePath, headers, isProxy=isproxy)
-                if result == 1:
-                    copyfile(filePath, dest)
                 print('剩余', count, [getNowTime(), result, match])
+                if result == 1:
+                    EuropeOddsZq.upOdds_byFile(filePath)
                 if result == 4:
                     sql_util.upData('zq_schedule', {'eurOdds_f': 4}, {'matchID': matchID})
+            else:
+                EuropeOddsZq.upOdds_byFile(filePath)
             count = count - 1
 
     # 逻辑未做历史判断更新
@@ -420,7 +419,7 @@ class EuropeOddsZq(object):
     @staticmethod
     def local_detail_byFile():
         year = input("请输入比赛时间时间(年)： ")
-        files = dirFiles(zqconfig_qt.europjs_pending_dir + year + "\\", [])
+        files = dirFiles(zqconfig_qt.europjs_dir + year + "\\", [])
         count = len(files)
         for file in files:
             EuropeOddsZq.local_upDetail_byFile(file)

@@ -94,11 +94,9 @@ zq_new_season = ['2023-2024','2024','2024-2025']
 # state_ch[18] = "加,加,Ot"
 # state_ch[19] = "点,點,"
 
-zq_europJS_dir = str(DATA_DIR / 'zuqiu' / '1x2')
-zq_europJS_pending_dir = str(DATA_DIR / 'zuqiu' / 'pending' / '1x2')
+zq_europJS_dir = str(DATA_DIR / 'zuqiu' / 'work' / '1x2')
 
-lq_europJS_dir = str(DATA_DIR / 'lanqiu' / '1x2')
-lq_europJS_pending_dir = str(DATA_DIR / 'lanqiu' / 'pending' / '1x2')
+lq_europJS_dir = str(DATA_DIR / 'lanqiu' / 'work' / '1x2')
 lq_scheJS_local_dir = str(DATA_DIR / 'lanqiu' / 'jsData' / 'matchResult')
 scheJs_localPend_dir = str(DATA_DIR / 'lanqiu' / 'pending' / 'matchResult')
 lq_seasonJS_local_dir = str(DATA_DIR / 'lanqiu' / 'jsData' / 'LeagueSeason')

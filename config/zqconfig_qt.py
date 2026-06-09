@@ -22,8 +22,7 @@ schedule_js_work_dir = str(DATA_DIR / "work" / "matchResult")
 keep_schedule_js_cache = False
 enable_finished_season_backfill = False
 
-europjs_dir = str(DATA_DIR / "1x2") + "/"
-europjs_pending_dir = str(DATA_DIR / "pending" / "1x2") + "/"
+europjs_dir = str(DATA_DIR / "work" / "1x2") + "/"
 
 seajsWebdir = "http://zq.titan007.com/jsData/LeagueSeason/"
 scheWebdir = "http://zq.titan007.com/jsData/matchResult/"

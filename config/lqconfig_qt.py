@@ -20,7 +20,7 @@ rankWebdir = 'http://nba.titan007.com/jsData/rank/'
 
 europe_url = "http://nba.titan007.com/1x2/oddslist/"
 europejs_url = "http://nba.titan007.com/1x2/data1x2/"
-europjs_dir = str(DATA_DIR / '1x2') + '/'
+europjs_dir = str(DATA_DIR / 'work' / '1x2') + '/'
 
 # 篮球小节比分页面地址
 techtxtlive = 'http://nba.titan007.com/cn/Tech/TechTxtLive.aspx'
