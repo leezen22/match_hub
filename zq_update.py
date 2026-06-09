@@ -92,4 +92,11 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    update_schedule_js()
+    update_schedule_js_local()
+    update_schedule()
+    update_score()
+    update_odds('2026-05-05 00:00:00')
+    # TotalStZq.update_st('2026-04-20 00:00:00')
+    # TotalStZq.judgeHit()
+  
