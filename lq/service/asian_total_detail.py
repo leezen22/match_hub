@@ -72,7 +72,7 @@ class AsianTotalDetails(object):
         total_count = len(total_result)
         # 第二版处理方案当前指数公司 比赛让分和大小都无开盘
         if (asian_count > 0 and asian_result[0][3] != 2) or (total_count > 0 and total_result[0][3] != 2):
-            details = AsianTotalDetails.collect_asian_total_detail(scheduleID, companyID)
+            details = AsianTotalDetails.collect_asian_total_details(scheduleID, companyID)
             if details['state'] == 1:
                 threads = []
                 matchState = details['matchState']

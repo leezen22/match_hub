@@ -1,4 +1,5 @@
 import traceback
+import requests
 from bs4 import BeautifulSoup
 from config import lqconfig_qt, common_config
 from lq.dao.MatchDao import selectMatch
