@@ -111,8 +111,12 @@ def earlyOdds_NBA():
     #     earlydict[teamlist[i]]['Wins'] = highlist[i]['Wins']
     #     earlydict[teamlist[i]]['HighOdds'] = highlist[i]['HighOdds']
     #     earlydict[teamlist[i]]['LowOdds'] = lowlist[i]['LowOdds']
-    teamInfo = sql_util.selectData('lq_team', ['ID', 'Name_J', 'leagueID', 'LocationID', 'MatchAddrID', 'Drillmaster'],
-                                   {'leagueID': 1}, 1)
+    teamInfo = sql_util.select_table_rows(
+        'lq_team',
+        ['ID', 'Name_J', 'leagueID', 'LocationID', 'MatchAddrID', 'Drillmaster'],
+        {'leagueID': 1},
+        isDis=True,
+    )
     for team in teamInfo:
         if team[1] == '亚特兰大老鹰':
             teamname = '亚特兰大鹰'
