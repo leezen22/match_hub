@@ -378,11 +378,11 @@ class LqOddsService(object):
     @staticmethod
     def up_2in1_byMatch(scope, matchId, companyId, scheduleId, matchState, matchTime):
         asian_results = cast(Tuple[Dict[str, Any], ...],
-                             LqAsianOddsDao.selectData(['oddsId', 'finished_pre', 'finished_gun'],
-                                                       {'matchId': matchId, 'companyId': companyId}, isDict=True))
+                             LqAsianOddsDao.select_dicts(['oddsId', 'finished_pre', 'finished_gun'],
+                                                         {'matchId': matchId, 'companyId': companyId}))
         total_results = cast(Tuple[Dict[str, Any], ...],
-                             LqTotalOddsDao.selectData(['oddsId', 'finished_pre', 'finished_gun'],
-                                                       {'matchId': matchId, 'companyId': companyId}, isDict=True))
+                             LqTotalOddsDao.select_dicts(['oddsId', 'finished_pre', 'finished_gun'],
+                                                         {'matchId': matchId, 'companyId': companyId}))
         asian_oddsId = None
         asian_finished_pre = None
         asian_finished_gun = None

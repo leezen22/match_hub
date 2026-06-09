@@ -11,14 +11,23 @@ class LqTotalOddsDao(object):
         sql_util.insertData('lq_totalodds', data, keys, isDict)
 
     @staticmethod
+    def select_rows(keys, condition, isDis=False, orderBy='') -> Tuple[Row, ...]:
+        return sql_util.select_table_rows('lq_totalodds', keys, condition, isDis=isDis, orderBy=orderBy)
+
+    @staticmethod
+    def select_dicts(keys, condition, isDis=False, orderBy='') -> Tuple[DictRow, ...]:
+        return sql_util.select_table_dicts('lq_totalodds', keys, condition, isDis=isDis, orderBy=orderBy)
+
+    @staticmethod
     def selectData(keys, condition, isDis=False, isDict=False, orderBy='') -> Any:
-        data = sql_util.selectData('lq_totalodds', keys, condition, isDis, isDict, orderBy)
-        return data
+        if isDict:
+            return LqTotalOddsDao.select_dicts(keys, condition, isDis=isDis, orderBy=orderBy)
+        return LqTotalOddsDao.select_rows(keys, condition, isDis=isDis, orderBy=orderBy)
 
     @staticmethod
     def update(data, condition, keys=None, isDict=True, judge=False):
         if judge:
-            results = sql_util.selectData('lq_totalodds', [], condition)
+            results = LqTotalOddsDao.select_rows([], condition)
             if len(results) > 0:
                 sql_util.upData('lq_totalodds', data, condition)
             else:
