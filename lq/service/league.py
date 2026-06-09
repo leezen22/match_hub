@@ -9,7 +9,6 @@ from lq.dao import MatchDao
 from lq.extract import MatchJS
 from lq.formate import model
 from utils import sql_util, js2pyUtil, fileUtil
-from utils.fileUtil import fileWrite
 from utils.webUtil import WebUtil
 
 
@@ -20,13 +19,11 @@ class LQleague(object):
         # 联赛赛季信息JS文件
         seafilename = 'sea' + str(sclass[0]) + '.js'
         seajsUrl = lqconfig_qt.seajsWebdir + seafilename
-        seajsPath = lqconfig_qt.seajslocaldir + seafilename
         webresponse = WebUtil.requests_get(seajsUrl, headers=lqconfig_qt.headers,
                                            sourceName='update_lanqiu.getSchejsPending ')
         webcontent = webresponse[1]
         if webresponse[0] == 1 and webcontent != '':
             try:
-                fileWrite(seajsPath, "w", webcontent)
                 parse_result = js2pyUtil.js2c(webcontent, source=seajsUrl, required_names=("arrSeason",))
                 if parse_result[0] != 1:
                     fileUtil.logLine(common_config.js2pyweb_e, ["LQ_SEASON_JS_PARSE_SKIPPED", seajsUrl])
@@ -50,7 +47,7 @@ class LQleague(object):
                         if len(result) == 0:
                             stask['leagueId'] = leagueId
                             stask['matchSeason'] = season
-                            stask['seasonPath'] = seajsPath
+                            stask['seasonPath'] = seajsUrl
                             stask['state'] = 1
                             sql_util.insertData('lq_season_crawler', stask)
                         scheJSList = LQleague.getScheJS(sclass[0], season, sclass[2])
@@ -67,7 +64,7 @@ class LQleague(object):
                                 if len(result) == 0:
                                     scheinfo = {'scheKey': scheKey, 'leagueId': leagueId,
                                                 'matchSeason': model.changeSeason(season), 'fileName': filename,
-                                                'schePath': schejs[1], 'seaPath': seajsPath, 'state': 1}
+                                                'schePath': schejs[1], 'seaPath': seajsUrl, 'state': 1}
                                     sql_util.insertData('lq_schedule_crawler', scheinfo)
             except Exception as e:
                 fileUtil.logLine(common_config.js2pyweb_e, ["LQ_SCHEJS_PENDING_FAILED", seajsUrl, repr(e), traceback.format_exc()])

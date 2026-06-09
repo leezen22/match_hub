@@ -22,15 +22,6 @@ def _get_task_time(task):
     return result[0][2]
 
 
-def _pending_files(*subdirs):
-    files = []
-    for subdir in subdirs:
-        path = os.path.join(lqconfig_qt.schejslocaldir_p, subdir)
-        if os.path.isdir(path):
-            files.extend(fileUtil.dirFiles(path, []))
-    return files
-
-
 def _schedule_work_files():
     if os.path.isdir(lqconfig_qt.schedule_js_work_dir):
         return fileUtil.dirFiles(lqconfig_qt.schedule_js_work_dir, [])
@@ -43,9 +34,7 @@ def upSchedule():
     last_update_local = _get_task_time('schedule')
     update_time_sche = getNowTime()
 
-    pending_files = _schedule_work_files()
-    pending_files.extend(_pending_files(*lqconfig_qt.schedule_js_legacy_pending_dirs))
-    for file in pending_files:
+    for file in _schedule_work_files():
         print('start update schedule file: ' + file)
         is_updated = upScheduleByFile(file, 0, last_update_local)
         if is_updated and os.path.exists(file):

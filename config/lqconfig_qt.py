@@ -56,7 +56,6 @@ keep_schedule_js_cache = False
 # Current schedule update only uses temporary files. They are deleted after
 # parsing, so a new device can run without historical local JS cache.
 schedule_js_work_dir = str(DATA_DIR / 'work' / 'matchResult')
-schedule_js_legacy_pending_dirs = ['new', 'exist']
 
 # Set this to True only for explicit historical repair/backfill jobs.
 enable_finished_season_backfill = False

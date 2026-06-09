@@ -169,16 +169,14 @@ def getSchedulePending(leagueId, Type, season, ifHaveSub):
     pending_list = []
     seafilename = 'sea' + str(leagueId) + '.js'
     seajs_url = zqconfig_qt.seajsWebdir + seafilename
-    seajs_path = zqconfig_qt.seajslocaldir + seafilename
     condition = {'leagueId': leagueId, 'matchSeason': season}
     keys = ['ID', 'leagueId', 'matchSeason', 'seasonPath', 'state']
     result = sql_util.select_table_rows('zq_seasonTask', keys, condition)
     if len(result) == 0:
-        WebUtil.loadFileByName(seajs_url, seajs_path, zqconfig_qt.headers)
         stask = {
             'leagueId': leagueId,
             'matchSeason': season,
-            'seasonPath': seajs_path,
+            'seasonPath': seajs_url,
             'state': 1,
         }
         sql_util.insertData('zq_seasonTask', stask)

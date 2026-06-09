@@ -18,9 +18,7 @@ fifa_path_local = str(DATA_DIR / "pending" / "fifa" / "fifa.js")
 seajslocaldir = str(DATA_DIR / "jsData" / "LeagueSeason") + "/"
 schelocaldir = str(DATA_DIR / "jsData" / "matchResult") + "/"
 ranklocaldir = str(DATA_DIR / "jsData" / "rank") + "/"
-schejs_pending = str(DATA_DIR / "pending" / "matchResult") + "/"
 schedule_js_work_dir = str(DATA_DIR / "work" / "matchResult")
-schedule_js_legacy_pending_dirs = ["new", "exist"]
 keep_schedule_js_cache = False
 enable_finished_season_backfill = False
 

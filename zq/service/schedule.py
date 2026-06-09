@@ -30,10 +30,6 @@ def _pending_files():
     files = []
     for file in _dir_files_if_exists(zqconfig_qt.schedule_js_work_dir):
         files.append([file, 0])
-    for subdir in zqconfig_qt.schedule_js_legacy_pending_dirs:
-        path = os.path.join(zqconfig_qt.schejs_pending, subdir)
-        for file in _dir_files_if_exists(path):
-            files.append([file, 1 if subdir == 'exist' else 0])
     return files
 
 
