@@ -185,4 +185,9 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    update_schedule_js()
+    # upScheJsLocal()
+    update_schedule()
+    update_score()
+    update_odds()
+    update_details()
