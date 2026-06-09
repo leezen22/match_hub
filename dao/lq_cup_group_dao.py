@@ -9,7 +9,7 @@ class LqCupGroupDao(object):
     @staticmethod
     def update(data, condition, keys=None, isDict=True, judge=False):
         if judge:
-            result = sql_util.selectData('lq_cup_group', [], condition)
+            result = sql_util.select_table_rows('lq_cup_group', [], condition)
             if len(result) > 0:
                 sql_util.upData('lq_cup_group', data, condition)
             else:

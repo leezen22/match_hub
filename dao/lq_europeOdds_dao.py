@@ -9,7 +9,7 @@ class LqEuropeOddsDao(object):
     @staticmethod
     def update(data, condition, keys=None, isDict=True, judge=False):
         if judge:
-            results = sql_util.selectData('lq_europe', [], condition)
+            results = sql_util.select_table_rows('lq_europe', [], condition)
             # 比赛已入库
             if len(results) > 0:
                 sql_util.upData('lq_europe', data, condition)

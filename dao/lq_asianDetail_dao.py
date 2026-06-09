@@ -25,7 +25,7 @@ class LqAsianDetailDao(object):
         else:
             tableName = "lq_AsianOdds_gun_{0}".format(companyId)
         if judge:
-            results = sql_util.selectData(tableName, [], condition)
+            results = sql_util.select_table_rows(tableName, [], condition)
             # 比赛已入库
             if len(results) > 0:
                 sql_util.upData(tableName, data, condition)
