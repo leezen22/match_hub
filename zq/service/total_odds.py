@@ -301,8 +301,11 @@ class TotalOddsZq(object):
             if count > 0:
                 pass
             elif oddsdata is not None:
-                oddsArr = oddsdata.reverse()
+                oddsdata.reverse()
+                oddsArr = oddsdata
                 odds_items = []
+                keys = ['MatchID', 'ScheduleID', 'CompanyID', 'OddsType', 'HappenTime', 'HighOdds', 'Goal',
+                        'LowOdds', 'HomeScore', 'AwayScore', 'IsBet', 'ModifyTime', 'MatchState']
                 for i in range(0, len(oddsArr)):
                     odds_dict = {'MatchID': item[0], 'ScheduleID': schedulID, 'CompanyID': 3,
                                  'HighOdds': oddsArr[i]['HomeOdds'], 'Goal': oddsArr[i]['PanKou'],
@@ -342,8 +345,6 @@ class TotalOddsZq(object):
                          odds_dict['HappenTime'], odds_dict['HighOdds'],
                          odds_dict['Goal'], odds_dict['LowOdds'], odds_dict['HomeScore'], odds_dict['AwayScore'],
                          odds_dict['IsBet'], odds_dict['ModifyTime'], odds_dict['MatchState']])
-                    keys = ['MatchID', 'ScheduleID', 'CompanyID', 'OddsType', 'HappenTime', 'HighOdds', 'Goal',
-                            'LowOdds', 'HomeScore', 'AwayScore', 'IsBet', 'ModifyTime', 'MatchState']
                 if len(odds_items) > 0:
                     sql_util.insetMany('zq_halfgoals_3', keys, odds_items)
                     sqltemp1 = "update zq_schedule set halfgoals_f =2 where scheduleID= {0}".format(schedulID)
@@ -366,7 +367,7 @@ class TotalOddsZq(object):
         sql = "SELECT sche.MatchID,sche.ScheduleID,sche.MatchTime,sche.MatchState,sche.MatchSeason,sche.LeagueId,sche.SubLeagueID, " \
               "lea.Type,sche.Partscore_f,sche.Totalodds_f,sche.HomeTeam,sche.AwayTeam " \
               "FROM `zq_schedule` AS sche LEFT JOIN zq_league AS lea ON sche.LeagueID =lea.LeagueID " \
-              "WHERE sche.MatchState=-1 and sche.Totalodds_f IN(0,1) {0} " \
+              "WHERE sche.MatchState=-1 and sche.Totalodds_f IN(0,1,4) {0} " \
               "ORDER BY sche.MatchTime ASC".format(str_start)
         results = sql_util.select(sql)
         print("开始更新进球数初盘：{0}".format(len(results)))
