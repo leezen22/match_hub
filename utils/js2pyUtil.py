@@ -161,7 +161,7 @@ def jsLocjs(filepath):
         else:
             logLine(common_config.js2pylocal_e, ["LOCAL_JS_PARSE_FAILED", filepath])
     except Exception as e:
-        print(e)
+        print("LOCAL_JS_READ_OR_PARSE_FAILED filepath={0} error={1}".format(filepath, e))
         logLine(common_config.js2pylocal_e, [filepath, repr(e), traceback.format_exc()])
     return context
 

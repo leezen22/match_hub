@@ -169,9 +169,19 @@ class Lq2in1Crawler(object):
                         details['total']['keys_gun'] = self.qt_gun_total_keys
 
             except Exception as e:
-                print(e)
+                print("lq 2in1 detail parse failed: scheduleId={0}, companyId={1}, error={2}".format(
+                    self.scheduleId, self.companyId, e))
             else:
                 details['state'] = 1
+                section_states = []
+                if hasAsian:
+                    section_states.append(details['asian']['state'])
+                if hasTotal:
+                    section_states.append(details['total']['state'])
+                if section_states and all(state == 1 for state in section_states):
+                    details['state'] = 1
+                else:
+                    details['state'] = 0
         return details
 
 
@@ -190,7 +200,7 @@ class DetailThread(threading.Thread):
         try:
             return self.result
         except Exception as e:
-            print(e)
+            print("lq 2in1 detail thread failed: error={0}".format(e))
             return None
 
 
@@ -230,16 +240,25 @@ def collect_detail(soup, scope, oddsId, matchId, scheduleId=None,
                 matchTime = result[0]['matchTime']
             for tr in odds_trs:
                 tds = tr.select('td')
+                if len(tds) < 7:
+                    print("lq 2in1 detail row missing cells: scheduleId={0}, companyId={1}".format(
+                        scheduleId, companyId))
+                    continue
                 data0 = tds[0].text
                 happenTime = None
                 if data0 == '':
                     matchState = 0
                 else:
                     time = data0.split(' ')
+                    state_name = time[0]
+                    if state_name not in matchStateDict:
+                        print("lq 2in1 detail unknown state: scheduleId={0}, companyId={1}, state={2}".format(
+                            scheduleId, companyId, state_name))
+                        continue
                     if len(time) == 1:
-                        matchState = matchStateDict[time[0]]
+                        matchState = matchStateDict[state_name]
                     else:
-                        matchState = matchStateDict[time[0]]
+                        matchState = matchStateDict[state_name]
                         if len(time[1].replace(" ", "")) > 0:
                             happenTime = time[1]
 
@@ -249,8 +268,13 @@ def collect_detail(soup, scope, oddsId, matchId, scheduleId=None,
                 if (scope == 1 and matchState == 0) or (scope == 2 and matchState != 0) or scope == 3:
                     data1 = tds[1].text
                     if data1 != '-' and data1 != '':
-                        homeScore = data1.split('-')[0]
-                        awayScore = data1.split('-')[1]
+                        scores = data1.split('-')
+                        if len(scores) < 2:
+                            print("lq 2in1 detail score invalid: scheduleId={0}, companyId={1}, score={2}".format(
+                                scheduleId, companyId, data1))
+                            continue
+                        homeScore = scores[0]
+                        awayScore = scores[1]
                     else:
                         homeScore = None
                         awayScore = None
@@ -326,7 +350,8 @@ def collect_detail(soup, scope, oddsId, matchId, scheduleId=None,
             detail['hasFour'] = hasFour
             detail['gun'] = gun
     except Exception as e:
-        print(e)
+        print("lq 2in1 collect detail failed: scheduleId={0}, companyId={1}, error={2}".format(
+            scheduleId, companyId, e))
     return detail
 
 

@@ -63,8 +63,16 @@ class AsianDetailCrawler(object):
                         oddsTypeDict = {'即': 1, '滚': 2, '早': 0}
                         for i in range(0, counts):
                             tds = odds_tr[i].select('td')
+                            if len(tds) < 5:
+                                print("lq asian mobile detail row missing cells: scheduleId={0}, companyId={1}, index={2}".format(
+                                    self.scheduleId, self.companyId, i))
+                                continue
                             # spans = odds_tr[i].select('span')
                             oddsType_str = tds[0].get_text().strip()
+                            if oddsType_str not in oddsTypeDict:
+                                print("lq asian mobile detail unknown odds type: scheduleId={0}, companyId={1}, oddsType={2}".format(
+                                    self.scheduleId, self.companyId, oddsType_str))
+                                continue
                             oddsType = oddsTypeDict[oddsType_str]
                             homeOdds = tds[1].get_text().strip()
                             goal = tds[2].get_text().strip()
@@ -90,7 +98,10 @@ class AsianDetailCrawler(object):
                 # excepstr = traceback.format_exc()
                 # logLine(lqconfig_qt.exception, excepstr)
                 # 本地记录失败记录
-                print(e)
+                print("lq asian mobile detail parse failed: scheduleId={0}, companyId={1}, error={2}".format(
+                    self.scheduleId, self.companyId, e))
+                if details['pre']:
+                    details['state'] = 1
         print(webResponse[0])
         return details
 

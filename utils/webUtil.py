@@ -169,6 +169,9 @@ class WebUtil(object):
                     state = 4
                 info = "{0},{1}, 请求无异常：{2}, {3}".format(sourceName, ip, r.status_code, url)
         if state == 0 or state == 4:
+            info = "HTTP_POST_FAILED source={0} url={1} proxy_ip={2} detail={3}".format(
+                sourceName, url, ip, info
+            )
             logLine(common_config.httpRequest_fail, info)
         return [state, content]
 

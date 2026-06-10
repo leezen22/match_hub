@@ -36,6 +36,8 @@ def select_table_dicts(table, keys, condition, isDis=False, orderBy=''):
 
 def insetMany(table, keys, datas):
     result = False
+    db = None
+    sql = ""
     try:
         values = []
         for i in range(0, len(keys)):
@@ -48,9 +50,9 @@ def insetMany(table, keys, datas):
         cursor.executemany(sql, datas)
         db.commit()
     except Exception as e:
-        db.rollback()
-        print(table, sql)
-        print(e)
+        if db:
+            db.rollback()
+        print("SQL_INSERT_MANY_FAILED table={0} sql={1} error={2}".format(table, sql, e))
     else:
         db.close()
         result = True
@@ -68,13 +70,14 @@ def insertData(table, data, keys=None, isDict=True):
                                                                   ",".join(list_2_values(data)))
         sqlExecute(inSql)
     except Exception as e:
-        print(e)
+        print("SQL_INSERT_FAILED table={0} error={1}".format(table, e))
     else:
         finished = True
     return finished
 
 def insertDatas(table, datas):
     finished = False
+    db = None
     try:
         # 打开数据库连接
         db = reConndb()
@@ -85,8 +88,9 @@ def insertDatas(table, datas):
             cursor.execute(insql)
         db.commit()
     except Exception as e:
-        db.rollback()
-        print(e)
+        if db:
+            db.rollback()
+        print("SQL_INSERT_BATCH_FAILED table={0} error={1}".format(table, e))
     else:
         db.close()
         finished = True
@@ -98,7 +102,7 @@ def upData(table, data, condition):
         upsql = get_u_sql(table, data, condition)
         sqlExecute(upsql)
     except Exception as e:
-        print(e)
+        print("SQL_UPDATE_FAILED table={0} condition={1} error={2}".format(table, condition, e))
     else:
         pass
 
@@ -141,8 +145,7 @@ def sqlExecute(sql):
     except Exception as e:
         # 如果发生错误则回滚
         db.rollback()
-        print(sql)
-        print(e)
+        print("SQL_EXECUTE_FAILED sql={0} error={1}".format(sql, e))
     # 关闭数据库连接
     db.close()
     # 关闭数据库连接
@@ -162,8 +165,7 @@ def select_Execute(sql, isdict=False):
             cursor.execute(sql)
             results = cursor.fetchall()
     except Exception as e:
-        print(sql)
-        print(e)
+        print("SQL_SELECT_FAILED sql={0} error={1}".format(sql, e))
     finally:
         if db:
             db.close()
@@ -186,8 +188,7 @@ def reConndb():
         except Exception as e:
             conn_retries_count += 1
             if conn_retries_count == 10:
-                print(e)
-                print("数据库连接异常，已超过最大重试次数")
+                print("SQL_CONNECT_FAILED retries={0} error={1}".format(conn_retries_count, e))
     return None
 
 

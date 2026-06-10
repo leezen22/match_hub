@@ -121,6 +121,10 @@ class AsianDetailCrawler(object):
                                 oddsType = 1
                             else:
                                 scores = item['Score'].split("-")
+                                if len(scores) < 2:
+                                    print("zq asian mobile detail score invalid: scheduleId={0}, companyId={1}, score={2}".format(
+                                        self.scheduleId, self.companyId, item['Score']))
+                                    continue
                                 oddsType = 2
                                 homeScore = scores[0]
                                 awayScore = scores[1]
@@ -159,7 +163,8 @@ class AsianDetailCrawler(object):
                 else:
                     details['state'] = 0
             except Exception as e:
-                print(e)
+                print("zq asian mobile detail parse failed: scheduleId={0}, companyId={1}, error={2}".format(
+                    self.scheduleId, self.companyId, e))
         # 返回亚指开盘公司初盘和终盘盘口
         return details
 

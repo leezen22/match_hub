@@ -76,6 +76,10 @@ class EuropeDetailCrawler(object):
                     if counts > 0:
                         for i in range(1, counts):
                             tds = odds_tr[i].select('td')
+                            if len(tds) < 6:
+                                print("zq europe mobile detail row missing cells: scheduleId={0}, companyId={1}, index={2}".format(
+                                    self.scheduleId, self.companyId, i))
+                                continue
                             homeWin = tds[0].get_text().strip()
                             standOff = tds[1].get_text().strip()
                             awayWin = tds[2].get_text().strip()
@@ -97,7 +101,10 @@ class EuropeDetailCrawler(object):
                 # excepstr = traceback.format_exc()
                 # logLine(lqconfig_qt.exception, excepstr)
                 # 本地记录失败记录
-                print(e)
+                print("zq europe mobile detail parse failed: scheduleId={0}, companyId={1}, error={2}".format(
+                    self.scheduleId, self.companyId, e))
+                if details['pre']:
+                    details['state'] = 1
         return details
 
 
