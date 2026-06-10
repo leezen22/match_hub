@@ -287,7 +287,7 @@ def upAsianTotalDetails(companyID, startTime):
           "LEFT JOIN zq_schedule as zc on zt.scheduleID = zc.scheduleID " \
           "LEFT JOIN zq_asianodds as za on za.scheduleID = zt.scheduleID and zt.companyID = za.companyID " \
           "WHERE zt.companyID={0} {1} and matchState =-1 "\
-          "AND (zt.finished_pre in (0,1) or zt.finished_gun in (0,1) or za.finished_pre in (0,1) or za.finished_gun in (0,1)) " \
+          "AND (zt.finished_pre in (0,1) or zt.finished_gun in (0,1,4) or za.finished_pre in (0,1) or za.finished_gun in (0,1)) " \
           "ORDER BY zc.matchTime ASC".format(companyID, start_str)
 
     results = sql_util.select(sql)

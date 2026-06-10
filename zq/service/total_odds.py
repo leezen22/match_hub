@@ -307,6 +307,12 @@ class TotalOddsZq(object):
                 keys = ['MatchID', 'ScheduleID', 'CompanyID', 'OddsType', 'HappenTime', 'HighOdds', 'Goal',
                         'LowOdds', 'HomeScore', 'AwayScore', 'IsBet', 'ModifyTime', 'MatchState']
                 for i in range(0, len(oddsArr)):
+                    required_fields = ['HomeOdds', 'PanKou', 'AwayOdds', 'ModifyTime', 'Score', 'HappenTime']
+                    missing_fields = [field for field in required_fields if field not in oddsArr[i]]
+                    if missing_fields:
+                        print("zq half goals row missing field: scheduleId={0}, index={1}, fields={2}".format(
+                            schedulID, i, missing_fields))
+                        continue
                     odds_dict = {'MatchID': item[0], 'ScheduleID': schedulID, 'CompanyID': 3,
                                  'HighOdds': oddsArr[i]['HomeOdds'], 'Goal': oddsArr[i]['PanKou'],
                                  'LowOdds': oddsArr[i]['AwayOdds'], 'MatchState': 1}
@@ -326,6 +332,10 @@ class TotalOddsZq(object):
                     else:
                         odds_dict['OddsType'] = 2
                         goalsArr = oddsArr[i]['Score'].split('-')
+                        if len(goalsArr) < 2:
+                            print("zq half goals score invalid: scheduleId={0}, index={1}, score={2}".format(
+                                schedulID, i, oddsArr[i]['Score']))
+                            continue
                         odds_dict['HomeScore'] = goalsArr[0]
                         odds_dict['AwayScore'] = goalsArr[1]
 

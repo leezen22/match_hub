@@ -70,7 +70,9 @@ class EuropeOddsCrawler(object):
                     oddsData['keys_pre'] = self.qt_web_pre_keys
                     oddsData['pre'] = data['pre']
             except Exception as e:
-                print(e)
+                print("lq europe web odds parse failed: scheduleId={0}, error={1}".format(self.scheduleId, e))
+                if oddsData['odds']:
+                    oddsData['state'] = 1
         # 返回亚指开盘公司初盘和终盘盘口
         elif webResponse[0] == 4:
             oddsData['state'] = 4
@@ -117,7 +119,9 @@ class EuropeOddsCrawler(object):
                                        }
                         oddsData['odds'].append(companyOdds)
             except Exception as e:
-                print(e)
+                print("lq europe mobile odds parse failed: scheduleId={0}, error={1}".format(self.scheduleId, e))
+                if oddsData['odds']:
+                    oddsData['state'] = 1
                 # 获取页面成功
             else:
                 oddsData['state'] = 1
@@ -233,6 +237,9 @@ def get_byJS(jsContent, matchId, scheduleId=None, hasDetail=True):
             oddsData['pre'] = oddsDetails
     except Exception as e:
         print(e)
+        if company_odds:
+            oddsData['odds'] = company_odds
+            oddsData['state'] = 1
     return oddsData
 
 

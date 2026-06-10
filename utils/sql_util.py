@@ -3,10 +3,6 @@
 import pymysql
 from config.db_config import get_db_config
 from pymysql.converters import escape_string
-from typing import Any, Dict, Literal, Sequence, Tuple, Union, overload
-
-Row = Tuple[Any, ...]
-DictRow = Dict[str, Any]
 
 DB_PROFILE = "default"
 
@@ -17,36 +13,24 @@ def _connect(connect_timeout=None):
         config["connect_timeout"] = connect_timeout
     return pymysql.connect(**config)
 
-@overload
-def select(sql: str, isDict: Literal[False] = False) -> Tuple[Row, ...]:
-    ...
-
-@overload
-def select(sql: str, isDict: Literal[True]) -> Tuple[DictRow, ...]:
-    ...
-
-@overload
-def select(sql: str, isDict: bool = False) -> Union[Tuple[Row, ...], Tuple[DictRow, ...]]:
-    ...
-
 def select(sql, isDict=False):
     results = select_Execute(sql, isDict)
     return results
 
 
-def select_rows(sql: str) -> Tuple[Row, ...]:
+def select_rows(sql):
     return select_Execute(sql, isdict=False)
 
 
-def select_dicts(sql: str) -> Tuple[DictRow, ...]:
+def select_dicts(sql):
     return select_Execute(sql, isdict=True)
 
 
-def select_table_rows(table, keys, condition, isDis=False, orderBy='') -> Tuple[Row, ...]:
+def select_table_rows(table, keys, condition, isDis=False, orderBy=''):
     return selectData(table, keys, condition, isDis=isDis, isdict=False, orderBy=orderBy)
 
 
-def select_table_dicts(table, keys, condition, isDis=False, orderBy='') -> Tuple[DictRow, ...]:
+def select_table_dicts(table, keys, condition, isDis=False, orderBy=''):
     return selectData(table, keys, condition, isDis=isDis, isdict=True, orderBy=orderBy)
 
 

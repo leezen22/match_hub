@@ -172,7 +172,6 @@ class DetailCrawler(object):
 
                 if hasEurope:
                     details['europe'] = europeThread.get_result()
-                    details['europe'] = totalThread.get_result()
                     details['europe']['finished_pre'] = self.europe_finished_pre
                     details['europe']['finished_gun'] = self.europe_finished_gun
                     details['europe']['matchState'] = self.matchState
@@ -181,7 +180,15 @@ class DetailCrawler(object):
                     if hasType != 1:
                         details['europe']['keys_gun'] = self.qt_gun_europe_keys
 
-                details['state'] = 1
+                section_states = []
+                if hasAsian:
+                    section_states.append(details['asian']['state'])
+                if hasTotal:
+                    section_states.append(details['total']['state'])
+                if hasEurope:
+                    section_states.append(details['europe']['state'])
+                if section_states and all(state == 1 for state in section_states):
+                    details['state'] = 1
             except Exception as e:
                 print(e)
                 time.sleep(1)

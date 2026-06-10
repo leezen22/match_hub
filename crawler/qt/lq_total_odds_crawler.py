@@ -103,7 +103,9 @@ class TotalScoreCrawler(object):
                                 oddsData['odds'].append(oddsDict)
             except Exception as e:
                 excepstr = traceback.format_exc()
-                print(e)
+                print("lq total web odds parse failed: scheduleId={0}, error={1}".format(self.scheduleId, e))
+                if oddsData['odds']:
+                    oddsData['state'] = 1
             else:
                 oddsData['state'] = 1
         # 返回亚指开盘公司初盘和终盘盘口
@@ -176,7 +178,9 @@ class TotalScoreCrawler(object):
                 # excepstr = traceback.format_exc()
                 # logLine(lqconfig_qt.exception, excepstr)
                 # 本地记录失败记录
-                print(e)
+                print("lq total mobile odds parse failed: scheduleId={0}, error={1}".format(self.scheduleId, e))
+                if oddsData['odds']:
+                    oddsData['state'] = 1
                 # 获取页面成功
             else:
                 oddsData['state'] = 1

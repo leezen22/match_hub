@@ -88,7 +88,9 @@ class AsianOddsCrawler(object):
                 # excepstr = traceback.format_exc()
                 # logLine(lqconfig_qt.exception, excepstr)
                 # 本地记录失败记录
-                print(e)
+                print("lq asian web odds parse failed: scheduleId={0}, error={1}".format(self.scheduleId, e))
+                if oddsData['odds']:
+                    oddsData['state'] = 1
                 # 获取页面成功
             else:
                 oddsData['state'] = 1
@@ -162,7 +164,9 @@ class AsianOddsCrawler(object):
                 # excepstr = traceback.format_exc()
                 # logLine(lqconfig_qt.exception, excepstr)
                 # 本地记录失败记录
-                print(e)
+                print("lq asian mobile odds parse failed: scheduleId={0}, error={1}".format(self.scheduleId, e))
+                if oddsData['odds']:
+                    oddsData['state'] = 1
                 # 获取页面成功
             else:
                 oddsData['state'] = 1

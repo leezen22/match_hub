@@ -281,7 +281,7 @@ class AsianOddsZq(object):
         sql = "SELECT sche.MatchID,sche.ScheduleID,sche.MatchTime,sche.MatchState,sche.MatchSeason,sche.leagueId,sche.subLeagueID, " \
               "lea.type,sche.partscore_f,sche.asianOdds_f,sche.totalodds_f,sche.HomeTeam,sche.AwayTeam " \
               "FROM `zq_schedule` AS sche LEFT JOIN zq_league AS lea ON sche.LeagueID =lea.LeagueID " \
-              "WHERE sche.MatchState=-1 and sche.asianodds_f IN(0,1) {0} " \
+              "WHERE sche.MatchState=-1 and sche.asianodds_f IN(0,1,4) {0} " \
               "ORDER BY sche.MatchTime ASC".format(str_start)
         results = sql_util.select(sql)
         print("开始更新让球初盘：{0}".format(len(results)))
@@ -293,7 +293,7 @@ class AsianOddsZq(object):
             finished = item[9]
             asianCrawler = AsianOddsCrawler(matchID, scheduleID, matchState, finished)
             oddsData = asianCrawler.qt_mobile_get()
-            # print(oddsData)
+            print(oddsData)
             if oddsData['state'] == 1:
                 sql_util.upData('zq_schedule', {'asianodds_f': 1}, {'ScheduleID': scheduleID})
                 oddsList = oddsData['odds']

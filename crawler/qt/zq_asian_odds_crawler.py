@@ -80,27 +80,35 @@ class AsianOddsCrawler(object):
         if webResponse[0] == 1 and content != '':
             try:
                 jsonData = json.loads(webResponse[1])
-                companyList = jsonData['companies']
+            except Exception as e:
+                print("zq asian odds json parse failed: scheduleId={0}, error={1}".format(self.scheduleId, e))
+            else:
+                companyList = jsonData.get('companies', [])
+                if not companyList:
+                    print("zq asian odds companies missing: scheduleId={0}".format(self.scheduleId))
                 for company in companyList:
-                    companyId = company['companyId']
-                    companyName = company['nameCn']
-                    oddsDataList = company['details']
+                    try:
+                        companyId = company['companyId']
+                        companyName = company['nameCn']
+                        oddsDataList = company['details']
+                    except Exception as e:
+                        print("zq asian odds company base field missing: scheduleId={0}, error={1}".format(
+                            self.scheduleId, e))
+                        continue
                     if len(oddsDataList) > 0 and oddsDataList[0]['num'] == 1:
                         company_data = oddsDataList[0]
-                        homeOdds_F = company_data["firstHomeOdds"]
-                        if 'firstDrawOdds' in company_data.keys():
-                            goal_F = company_data["firstDrawOdds"]
-                        else:
-                            goal_F = 0
-
-                        awayOdds_F = company_data["firstAwayOdds"]
-                        homeOdds = company_data["homeOdds"]
-                        if 'drawOdds' in company_data.keys():
-                            goal = company_data["drawOdds"]
-                        else:
-                            goal = 0
-                        awayOdds = company_data["awayOdds"]
-                        timeStamp = int(company_data["modifyTime"])
+                        homeOdds_F = company_data.get("firstHomeOdds")
+                        goal_F = company_data.get("firstDrawOdds", 0)
+                        awayOdds_F = company_data.get("firstAwayOdds")
+                        homeOdds = company_data.get("homeOdds")
+                        goal = company_data.get("drawOdds", 0)
+                        awayOdds = company_data.get("awayOdds")
+                        modify_ts = company_data.get("modifyTime")
+                        if any(v is None for v in [homeOdds_F, awayOdds_F, homeOdds, awayOdds, modify_ts]):
+                            print("zq asian odds company missing odds: scheduleId={0}, companyId={1}".format(
+                                self.scheduleId, companyId))
+                            continue
+                        timeStamp = int(modify_ts)
                         dateArray = datetime.fromtimestamp(timeStamp)
                         modifyTime = dateArray.strftime("%Y-%m-%d %H:%M:%S")
                         company_odds = [self.matchId, self.scheduleId, companyId, companyName,
@@ -115,13 +123,11 @@ class AsianOddsCrawler(object):
                         ]
                         oddsDict = {}
                         for j in range(0, len(company_odds)):
-                            if company_odds[j] != '':
+                            if company_odds[j] != '' and company_odds[j] is not None:
                                 oddsDict[keys[j]] = company_odds[j]
                         oddsData['odds'].append(oddsDict)
-            except Exception as e:
-                print(e)
-            else:
-                oddsData['state'] = 1
+                if oddsData['odds']:
+                    oddsData['state'] = 1
         # 返回亚指开盘公司初盘和终盘盘口
         return oddsData
 

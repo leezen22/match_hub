@@ -237,6 +237,9 @@ class AsianTotalDetails(object):
                 oddsType = None
                 modifyTime = None
                 tds = trs[i].select('td')
+                if len(tds) < 7:
+                    print("lq asian detail row missing cells: oddsID={0}, index={1}".format(oddsID, i))
+                    continue
                 data0 = tds[0].text
                 if data0 == '':
                     matchState = 0
@@ -250,8 +253,12 @@ class AsianTotalDetails(object):
                             happenTime = time[1]
                 data1 = tds[1].text
                 if data1 != '-' and data1 != '':
-                    homeScore = data1.split('-')[0]
-                    awayScore = data1.split('-')[1]
+                    scores = data1.split('-')
+                    if len(scores) < 2:
+                        print("lq asian detail score invalid: oddsID={0}, score={1}".format(oddsID, data1))
+                        continue
+                    homeScore = scores[0]
+                    awayScore = scores[1]
                 data2 = tds[2].text
                 if data2 != '':
                     homeOdds = data2
@@ -305,9 +312,11 @@ class AsianTotalDetails(object):
                 oddsType = None
                 modifyTime = None
                 tds = trs[i].select('td')
+                if len(tds) < 7:
+                    print("lq total detail row missing cells: oddsID={0}, index={1}".format(oddsID, i))
+                    continue
                 data0 = tds[0].text
                 if data0 == '':
-                    detail[2]
                     matchState = 0
                 else:
                     time = data0.split(' ')
@@ -319,8 +328,12 @@ class AsianTotalDetails(object):
                             happenTime = time[1]
                 data1 = tds[1].text
                 if data1 != '-' and data1 != '':
-                    homeScore = data1.split('-')[0]
-                    awayScore = data1.split('-')[1]
+                    scores = data1.split('-')
+                    if len(scores) < 2:
+                        print("lq total detail score invalid: oddsID={0}, score={1}".format(oddsID, data1))
+                        continue
+                    homeScore = scores[0]
+                    awayScore = scores[1]
                 data2 = tds[2].text
                 if data2 != '':
                     highOdds = data2

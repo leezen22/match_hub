@@ -38,9 +38,9 @@ class LqOddsService(object):
         time2 = "'" + (now + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S") + "'"
         # and leagueID in (1, 2, 5, 7, 14, 15, 19, 25, 20, 28, 22)
         asiansql = "SELECT scheduleID, leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
-                   " WHERE asianodds_f in(0,1) and matchState>=-1 and MatchTime < {0} order by matchTime ASC ".format(time2)
+                   " WHERE asianodds_f in(0,1,4) and matchState>=-1 and MatchTime < {0} order by matchTime ASC ".format(time2)
         totalsql = "SELECT scheduleID,leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
-                   " WHERE totalodds_f in(0,1) and matchState>=-1 and matchTime < {0} order by matchTime ASC ".format(time2)
+                   " WHERE totalodds_f in(0,1,4) and matchState>=-1 and matchTime < {0} order by matchTime ASC ".format(time2)
 
         # totalsql= {}
         asianMatchList = sql_util.select(asiansql)
@@ -209,8 +209,8 @@ class LqOddsService(object):
             on asian.companyId = tot.companyId and asian.matchId = tot.matchId
             left JOIN `lq_schedule` as sche 
             on sche.matchId = tot.matchId
-            WHERE tot.companyId={0} and (tot.finished_gun in(0,1) or asian.finished_gun in(0,1)) 
-            and sche.matchTime>='2020-01-01 00:00' 
+            WHERE tot.companyId={0} and (tot.finished_gun in(0,1,4) or asian.finished_gun in(0,1,4)) 
+            and sche.matchTime>='2025-01-01 00:00' 
             and sche.matchState >=-1 order by sche.matchtime ASC
         """.format(companyId)
         results = cast(Tuple[Tuple[Any, ...], ...], LqAsianOddsDao.select(sql))

@@ -1,34 +1,20 @@
 from utils import sql_util
-from typing import Any, Dict, Literal, Tuple, overload
-
-Row = Tuple[Any, ...]
-DictRow = Dict[str, Any]
 
 
 class LqMatchDao(object):
     @staticmethod
-    def select_rows(keys, condition, isDis=False, orderBy='') -> Tuple[Row, ...]:
+    def select_rows(keys, condition, isDis=False, orderBy=''):
         return sql_util.select_table_rows('lq_schedule', keys, condition, isDis=isDis, orderBy=orderBy)
 
     @staticmethod
-    def select_dicts(keys, condition, isDis=False, orderBy='') -> Tuple[DictRow, ...]:
+    def select_dicts(keys, condition, isDis=False, orderBy=''):
         return sql_util.select_table_dicts('lq_schedule', keys, condition, isDis=isDis, orderBy=orderBy)
 
     @staticmethod
-    def selectData(keys, condition, isDis=False, isDict=False, orderBy='') -> Any:
+    def selectData(keys, condition, isDis=False, isDict=False, orderBy=''):
         if isDict:
             return LqMatchDao.select_dicts(keys, condition, isDis=isDis, orderBy=orderBy)
         return LqMatchDao.select_rows(keys, condition, isDis=isDis, orderBy=orderBy)
-
-    @staticmethod
-    @overload
-    def select(sql: str, isdict: Literal[False] = False) -> Tuple[Row, ...]:
-        ...
-
-    @staticmethod
-    @overload
-    def select(sql: str, isdict: Literal[True]) -> Tuple[DictRow, ...]:
-        ...
 
     @staticmethod
     def select(sql, isdict=False):

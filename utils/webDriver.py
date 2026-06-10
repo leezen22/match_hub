@@ -9,7 +9,7 @@ class WebDriver(object):
         driver = None
         if proxy is None:
             sql = 'SELECT ip,port FROM proxyip WHERE availableDriver in(1) ORDER BY RAND() LIMIT ' + str(1)
-            result = sql_util.select(sql)
+            result = sql_util.select_rows(sql)
             if len(result) > 0:
                 data = result[0]
                 proxy = data[0]+":"+data[1]

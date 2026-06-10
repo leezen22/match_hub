@@ -29,10 +29,12 @@ def get_PartScore(matchid):
         sign = lqconfig_qt.matchstate[state_data[0]]
         # 比赛未开场，不需更新比分
         if sign != 0:
-            if soup.find(id='homeHeadScore').text != '':
-                matchdict['homeScore'] = soup.find(id='homeHeadScore').text
-            if soup.find(id='guestHeadScore').text != '':
-                matchdict['awayScore'] = soup.find(id='guestHeadScore').text
+            home_score = soup.find(id='homeHeadScore')
+            away_score = soup.find(id='guestHeadScore')
+            if home_score and home_score.text != '':
+                matchdict['homeScore'] = home_score.text
+            if away_score and away_score.text != '':
+                matchdict['awayScore'] = away_score.text
             home_tr = scoretr[1]
             away_tr = scoretr[2]
             home_tds = home_tr.select('td')
