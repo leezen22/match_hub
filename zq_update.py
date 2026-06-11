@@ -11,7 +11,7 @@ from zq.service.total_odds import TotalOddsZq
 from zq.service.zq_st_goals import TotalStZq
 from zq.service.zq_up_odds import upAsianTotalDetails
 
-DEFAULT_ODDS_START_TIME = '2026-05-05 00:00:00'
+DEFAULT_ODDS_START_TIME = '2026-06-05 00:00:00'
 
 
 def _pending_schedule_files():

@@ -281,7 +281,7 @@ class AsianOddsZq(object):
         sql = "SELECT sche.MatchID,sche.ScheduleID,sche.MatchTime,sche.MatchState,sche.MatchSeason,sche.leagueId,sche.subLeagueID, " \
               "lea.type,sche.partscore_f,sche.asianOdds_f,sche.totalodds_f,sche.HomeTeam,sche.AwayTeam " \
               "FROM `zq_schedule` AS sche LEFT JOIN zq_league AS lea ON sche.LeagueID =lea.LeagueID " \
-              "WHERE sche.MatchState=-1 and sche.asianodds_f IN(0,1,4) {0} " \
+              "WHERE sche.MatchState=-1 and sche.asianodds_f IN(0,1) {0} " \
               "ORDER BY sche.MatchTime ASC".format(str_start)
         results = sql_util.select(sql)
         print("开始更新让球初盘：{0}".format(len(results)))

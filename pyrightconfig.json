@@ -8,6 +8,8 @@
     "exclude": [
         "venv",
         ".idea",
+        "**/node_modules",
+        "**/.*",
         "**/__pycache__"
     ]
 }
