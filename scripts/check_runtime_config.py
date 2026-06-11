@@ -5,7 +5,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.db_config import DATABASES, LOCAL_CONFIG_LOADED, get_db_config, local_config_path
+from config.db_config import (
+    DATABASES,
+    ENV_CONFIG_LOADED,
+    LOCAL_CONFIG_LOADED,
+    env_config_path,
+    get_db_config,
+    local_config_path,
+)
 
 
 def _mask(value):
@@ -16,28 +23,36 @@ def _mask(value):
 
 
 def main():
-    path = local_config_path()
+    env_path = env_config_path()
+    legacy_path = local_config_path()
     print("Project:", PROJECT_ROOT)
-    print("Local DB config:", path)
-    print("Local DB config exists:", path.exists())
-    print("Local DB config loaded:", LOCAL_CONFIG_LOADED)
+    print("Local .env:", env_path)
+    print("Local .env exists:", env_path.exists())
+    print("Local .env loaded:", ENV_CONFIG_LOADED)
+    print("Legacy DB config:", legacy_path)
+    print("Legacy DB config exists:", legacy_path.exists())
+    print("Legacy DB config loaded:", LOCAL_CONFIG_LOADED)
     print("Profiles:", ", ".join(sorted(DATABASES.keys())))
 
     for profile in sorted(DATABASES.keys()):
-        config = get_db_config(profile)
+        try:
+            config = get_db_config(profile)
+        except Exception as e:
+            print("{0}: not configured ({1})".format(profile, e))
+            continue
         print(
             "{0}: host={1} port={2} db={3} user={4} passwd={5}".format(
                 profile,
-                config.get("host"),
+                _mask(config.get("host")),
                 config.get("port"),
-                config.get("db"),
-                config.get("user"),
+                _mask(config.get("db")),
+                _mask(config.get("user")),
                 _mask(config.get("passwd")),
             )
         )
 
-    if not path.exists():
-        print("WARNING: create config/db_config.local.py from config/db_config.sample.py before running updates.")
+    if not env_path.exists():
+        print("WARNING: create .env from .env.sample before running updates.")
 
     print("")
     print("Default no-argument update tasks:")

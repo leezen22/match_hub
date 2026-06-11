@@ -8,4 +8,6 @@ logs/
 data/
 tmp_debug_logs/
 .env
+.env.*
+!.env.sample
 config/db_config.local.py

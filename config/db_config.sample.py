@@ -1,25 +1,25 @@
 DATABASES = {
     "default": {
-        "host": "127.0.0.1",
-        "user": "root",
-        "passwd": "change-me",
-        "port": 3306,
-        "db": "xiaoqiu",
+        "host": "",
+        "user": "",
+        "passwd": "",
+        "port": "",
+        "db": "",
     },
     "local": {
-        "host": "127.0.0.1",
-        "user": "root",
-        "passwd": "change-me",
-        "port": 3306,
-        "db": "xiaoqiu",
+        "host": "",
+        "user": "",
+        "passwd": "",
+        "port": "",
+        "db": "",
     },
     "ali": {
-        "host": "example.mysql.rds.aliyuncs.com",
-        "user": "change-me",
-        "passwd": "change-me",
-        "port": 3306,
-        "db": "xiaoqiu",
+        "host": "",
+        "user": "",
+        "passwd": "",
+        "port": "",
+        "db": "",
     },
 }
 
-DEFAULT_DB_PROFILE = "default"
+DEFAULT_DB_PROFILE = ""
