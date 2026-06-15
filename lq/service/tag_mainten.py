@@ -46,7 +46,7 @@ def upSeasonTask(filepath):
         stask['leagueId'] = leagueId
         stask['matchSeason'] = leagueId
         stask['matchSeason'] = season
-        stask['seasonPath'] = filepath
+        stask['seasonPath'] = filename
         if len(relsult) > 0 and relsult[0][4] == 2:
             pass
         else:

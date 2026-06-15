@@ -43,7 +43,7 @@ def upSeasonTask(filepath):
         relsult = sql_util.select_table_rows('lq_season_crawler', keys, condition)
         stask['leagueID'] = leagueID
         stask['matchSeason'] = season
-        stask['seasonPath'] = filepath
+        stask['seasonPath'] = filename
         if len(relsult) > 0 and relsult[0][4] == 2:
             pass
         else:

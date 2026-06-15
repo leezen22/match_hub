@@ -176,7 +176,7 @@ def getSchedulePending(leagueId, Type, season, ifHaveSub):
         stask = {
             'leagueId': leagueId,
             'matchSeason': season,
-            'seasonPath': seajs_url,
+            'seasonPath': seafilename,
             'state': 1,
         }
         sql_util.insertData('zq_seasonTask', stask)

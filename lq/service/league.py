@@ -47,7 +47,7 @@ class LQleague(object):
                         if len(result) == 0:
                             stask['leagueId'] = leagueId
                             stask['matchSeason'] = season
-                            stask['seasonPath'] = seajsUrl
+                            stask['seasonPath'] = seafilename
                             stask['state'] = 1
                             sql_util.insertData('lq_season_crawler', stask)
                         scheJSList = LQleague.getScheJS(sclass[0], season, sclass[2])

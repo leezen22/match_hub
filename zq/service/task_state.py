@@ -19,7 +19,7 @@ def upSeasonState(filepath):
         relsult = sql_util.select_table_rows('zq_seasonTask', keys, condition)
         stask['leagueId'] = leagueId
         stask['matchSeason'] = season
-        stask['seasonPath'] = filepath
+        stask['seasonPath'] = filename
         if len(relsult) > 0 and relsult[0][4] == 2:
             pass
         else:
