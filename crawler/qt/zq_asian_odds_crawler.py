@@ -7,11 +7,12 @@ from utils.webUtil import WebUtil
 
 
 class AsianOddsCrawler(object):
-    def __init__(self, matchId, scheduleId=None, matchState=None, finished=None):
+    def __init__(self, matchId, scheduleId=None, matchState=None, finished=None, is_half=False):
         self.matchId = matchId
         self.scheduleId = scheduleId
         self.matchState = matchState
         self.finished = finished
+        self.is_half = is_half
 
     @property
     def qt_mobile_host(self):
@@ -27,7 +28,11 @@ class AsianOddsCrawler(object):
 
     @property
     def qt_mobile_url(self):
-        return "{0}&scheid={1}".format(scrawler_config.qt_zq_mobile_asianOdds_url, self.scheduleId)
+        return "{0}&scheid={1}&isHalf={2}".format(
+            scrawler_config.qt_zq_mobile_asianOdds_url,
+            self.scheduleId,
+            1 if self.is_half else 0,
+        )
 
     @property
     def qt_web_url(self):
@@ -66,7 +71,7 @@ class AsianOddsCrawler(object):
         headers = {"Host": self.qt_mobile_host}
         oddsData = {'state': 0, 'matchId': self.matchId, 'scheduleId': self.scheduleId,
                     'matchState': self.matchState, 'finished': self.finished,
-                    "odds": []}
+                    'isHalf': self.is_half, "odds": []}
         if self.matchState is None:
             result = ZqMatchDao.select_dicts(['matchId', 'matchState'],
                                              {'matchId': self.matchId}, isDis=True)
@@ -111,16 +116,26 @@ class AsianOddsCrawler(object):
                         timeStamp = int(modify_ts)
                         dateArray = datetime.fromtimestamp(timeStamp)
                         modifyTime = dateArray.strftime("%Y-%m-%d %H:%M:%S")
-                        company_odds = [self.matchId, self.scheduleId, companyId, companyName,
-                                        homeOdds_F, goal_F, awayOdds_F,
-                                        homeOdds, goal, awayOdds,
-                                        modifyTime]
-                        keys = [
-                            'matchId', 'scheduleId', 'companyId', 'companyName',
-                            'homeOdds_F', 'goal_F', 'awayOdds_F',
-                            'homeOdds', 'goal', 'awayOdds',
-                            'modifyTime'
+                        company_odds = [
+                            self.matchId, self.scheduleId, companyId, companyName,
+                            homeOdds_F, goal_F, awayOdds_F,
+                            homeOdds, goal, awayOdds,
+                            modifyTime,
                         ]
+                        if self.is_half:
+                            keys = [
+                                'matchId', 'scheduleId', 'companyId', 'companyName',
+                                'halfHomeOdds_F', 'halfGoal_F', 'halfAwayOdds_F',
+                                'halfHomeOdds', 'halfGoal', 'halfAwayOdds',
+                                'halfModifyTime',
+                            ]
+                        else:
+                            keys = [
+                                'matchId', 'scheduleId', 'companyId', 'companyName',
+                                'homeOdds_F', 'goal_F', 'awayOdds_F',
+                                'homeOdds', 'goal', 'awayOdds',
+                                'modifyTime',
+                            ]
                         oddsDict = {}
                         for j in range(0, len(company_odds)):
                             if company_odds[j] != '' and company_odds[j] is not None:

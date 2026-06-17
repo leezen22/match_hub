@@ -11,6 +11,15 @@ from zq.oddsUtil_zq import OddsUtil
 
 
 class AsianOddsZq(object):
+    @staticmethod
+    def _upsert_mobile_odds(scheduleID, oddsList):
+        for odds in oddsList:
+            condition = {'ScheduleID': scheduleID, 'CompanyID': odds['companyId']}
+            results = sql_util.select_table_rows('zq_asianodds', ['OddsID'], condition, isDis=True)
+            if len(results) > 0:
+                sql_util.upData('zq_asianodds', odds, condition)
+            else:
+                sql_util.insertData('zq_asianodds', odds)
 
     # 三合一页面 单场比赛让分变化记录数据更新
     @staticmethod
@@ -297,21 +306,42 @@ class AsianOddsZq(object):
             if oddsData['state'] == 1:
                 sql_util.upData('zq_schedule', {'asianodds_f': 1}, {'ScheduleID': scheduleID})
                 oddsList = oddsData['odds']
-                if finished == 0:
-                    sql_util.insertDatas('zq_asianodds', oddsList)
-                else:
-                    for odds in oddsList:
-                        condition = {'ScheduleID': scheduleID, 'CompanyID': odds['companyId']}
-                        results2 = sql_util.select_table_rows('zq_asianodds', ['OddsID'], condition, isDis=True)
-                        if len(results2) > 0:
-                            sql_util.upData('zq_asianodds', odds, condition)
-                        else:
-                            sql_util.insertData('zq_asianodds', odds)
+                AsianOddsZq._upsert_mobile_odds(scheduleID, oddsList)
                 if matchState in (-1, -10):
                     sql_util.upData('zq_schedule', {'asianodds_f': 2}, {'ScheduleID': scheduleID})
             elif matchState == -1 and oddsData['state'] == 0:
                 sql_util.upData('zq_schedule', {'asianodds_f': 4}, {'ScheduleID': scheduleID})
             # time.sleep(1)
+
+    @staticmethod
+    def up_half_odds_mobile(start_time=None):
+        if start_time:
+            str_start = "and MatchTime>='{0}'".format(start_time)
+        else:
+            str_start = ''
+        sql = "SELECT sche.MatchID,sche.ScheduleID,sche.MatchTime,sche.MatchState,sche.MatchSeason,sche.leagueId,sche.subLeagueID, " \
+              "lea.type,sche.partscore_f,sche.half_asianodds_f,sche.totalodds_f,sche.HomeTeam,sche.AwayTeam " \
+              "FROM `zq_schedule` AS sche LEFT JOIN zq_league AS lea ON sche.LeagueID =lea.LeagueID " \
+              "WHERE sche.MatchState=-1 and sche.half_asianodds_f IN(0,1) {0} " \
+              "ORDER BY sche.MatchTime ASC".format(str_start)
+        results = sql_util.select(sql)
+        print("开始更新半场让球初盘：{0}".format(len(results)))
+        for item in results:
+            print(item)
+            matchID = item[0]
+            scheduleID = item[1]
+            matchState = item[3]
+            finished = item[9]
+            asianCrawler = AsianOddsCrawler(matchID, scheduleID, matchState, finished, is_half=True)
+            oddsData = asianCrawler.qt_mobile_get()
+            print(oddsData)
+            if oddsData['state'] == 1:
+                sql_util.upData('zq_schedule', {'half_asianodds_f': 1}, {'ScheduleID': scheduleID})
+                AsianOddsZq._upsert_mobile_odds(scheduleID, oddsData['odds'])
+                if matchState in (-1, -10):
+                    sql_util.upData('zq_schedule', {'half_asianodds_f': 2}, {'ScheduleID': scheduleID})
+            elif matchState == -1 and oddsData['state'] == 0:
+                sql_util.upData('zq_schedule', {'half_asianodds_f': 4}, {'ScheduleID': scheduleID})
 
 
 # if __name__ == '__main__':

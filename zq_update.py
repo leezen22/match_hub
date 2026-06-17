@@ -46,6 +46,8 @@ def update_score():
 def update_odds(start_time=DEFAULT_ODDS_START_TIME):
     TotalOddsZq.up_odds_mobile(start_time)
     AsianOddsZq.up_odds_mobile(start_time)
+    TotalOddsZq.up_half_odds_mobile(start_time)
+    AsianOddsZq.up_half_odds_mobile(start_time)
     upAsianTotalDetails(3, start_time)
     TotalOddsZq.update_halfgoals(start_time)
 
