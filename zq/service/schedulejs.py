@@ -193,13 +193,13 @@ def getMRJSPending(leagueId, season, Type, ifHaveSub):
     headers = dict(zqconfig_qt.headers)
     if str(Type) == '2':
         schejs_url = zqconfig_qt.scheWebdir + season + "/c" + str(leagueId) + ".js"
-        schejs_path = zqconfig_qt.schelocaldir + season + "\\c" + str(leagueId) + ".js"
+        schejs_path = os.path.join(zqconfig_qt.schelocaldir, season, "c" + str(leagueId) + ".js")
         weburl = zqconfig_qt.cup_web_schedir + season + "/" + str(leagueId) + ".html"
         match_result_js_list.append([schejs_url, schejs_path, weburl])
     elif str(Type) == '1' and str(ifHaveSub) == '0':
         weburl = zqconfig_qt.league_web_schedir + season + "/" + str(leagueId) + ".html"
         schejs_url = zqconfig_qt.scheWebdir + season + "/s" + str(leagueId) + ".js"
-        schejs_path = zqconfig_qt.schelocaldir + season + "\\s" + str(leagueId) + ".js"
+        schejs_path = os.path.join(zqconfig_qt.schelocaldir, season, "s" + str(leagueId) + ".js")
         match_result_js_list.append([schejs_url, schejs_path, weburl])
     elif str(Type) == '1' and str(ifHaveSub) == '1':
         weburl = zqconfig_qt.sub_web_schedir + season + "/" + str(leagueId) + ".html"
@@ -224,13 +224,16 @@ def getMRJSPending(leagueId, season, Type, ifHaveSub):
                                 leagueId) + '_' + sub_id + ".html"
                             schejs_url = zqconfig_qt.scheWebdir + season + "/s" + str(
                                 leagueId) + '_' + sub_id + ".js"
-                            schejs_path = zqconfig_qt.schelocaldir + season + "\\s" + str(
-                                leagueId) + '_' + sub_id + ".js"
+                            schejs_path = os.path.join(
+                                zqconfig_qt.schelocaldir,
+                                season,
+                                "s" + str(leagueId) + '_' + sub_id + ".js",
+                            )
                             match_result_js_list.append([schejs_url, schejs_path, weburl])
                     else:
                         weburl = zqconfig_qt.league_web_schedir + season + "/" + str(leagueId) + ".html"
                         schejs_url = zqconfig_qt.scheWebdir + season + "/s" + str(leagueId) + ".js"
-                        schejs_path = zqconfig_qt.schelocaldir + season + "\\s" + str(leagueId) + ".js"
+                        schejs_path = os.path.join(zqconfig_qt.schelocaldir, season, "s" + str(leagueId) + ".js")
                         match_result_js_list.append([schejs_url, schejs_path, weburl])
             except Exception as e:
                 fileUtil.logLine(
@@ -239,7 +242,7 @@ def getMRJSPending(leagueId, season, Type, ifHaveSub):
                 )
 
     for match_result_js in match_result_js_list:
-        filename = os.path.basename(match_result_js[1])
+        filename = os.path.basename(match_result_js[0].split('?')[0])
         sche_key = str(leagueId) + "#" + season + "#" + filename
         condition = {'scheKey': sche_key}
         keys = ['ID', 'scheKey', 'leagueId', 'matchSeason', 'fileName', 'schePath', 'schePath', 'state']

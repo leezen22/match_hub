@@ -17,7 +17,23 @@ def upAsianOddsBymid(scheduleID, finished):
         if len(asianOddsDict['odds']) > 0:
             sql_util.upData('lq_schedule', {'asianodds_f': 1}, {'scheduleID': scheduleID})
             if finished == 0:
-                sql_util.insertDatas('lq_asianOdds', asianOddsDict['odds'])
+                for asianOdds in asianOddsDict['odds']:
+                    condition = {
+                        'scheduleID': asianOdds['ScheduleID'],
+                        'companyID': asianOdds['CompanyID'],
+                    }
+                    results = cast(Tuple[Tuple[Any, ...], ...],
+                                   sql_util.select_table_rows(
+                                       'lq_asianOdds',
+                                       ['oddsID'],
+                                       condition,
+                                       isDis=True,
+                                   ))
+                    asianOdds['modifyTime'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    if len(results) > 0:
+                        sql_util.upData('lq_asianOdds', asianOdds, condition)
+                    else:
+                        sql_util.insertData('lq_asianOdds', asianOdds)
             elif finished == 1:
                 for asianOdds in asianOddsDict['odds']:
                     results = cast(Tuple[Tuple[Any, ...], ...],

@@ -14,6 +14,7 @@ qt_zq_live_host = "live.titan007.com"
 qt_zq_static_host = "livestatic.titan007.com"
 
 qt_lq_league_js = "http://nba.titan007.com/jsData/infoHeader_cn.js"
+qt_lq_left_data_js = "https://nba.titan007.com/jsData/leftData/leftData.js"
 qt_lq_league_referer = "https://nba.titan007.com/index_cn.htm"
 qt_lq_web_sc_home = "http://bf.titan007.com/NBA_SC.aspx"
 qt_lq_web_sc_date = "http://bf.titan007.com/nba_date.aspx"

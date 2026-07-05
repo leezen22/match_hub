@@ -466,10 +466,10 @@ def _normalize_league_name(value):
 def _resolve_league_from_name(text):
     leagues = _get_leagues_web()
     expanded_text = _expand_league_aliases(text)
-    matches = [league for league in leagues if _league_name_matches(expanded_text, league["league_name"])]
+    matches = [league for league in leagues if _league_match_length(expanded_text, league) > 0]
     if not matches:
         return None
-    matches.sort(key=lambda item: len(_normalize_league_name(item["league_name"])), reverse=True)
+    matches.sort(key=lambda item: _league_match_length(expanded_text, item), reverse=True)
     return matches[0]
 
 
@@ -489,19 +489,33 @@ def _resolve_league_by_id(league_id):
     return None
 
 
+def _league_match_length(text, league):
+    best_length = 0
+    for field in ["league_name", "name_zh_hans", "name_zh_hant", "name_en"]:
+        value = league.get(field)
+        if isinstance(value, str) and _league_name_matches(text, value):
+            best_length = max(best_length, len(_normalize_league_name(value)))
+    return best_length
+
+
 def _get_leagues_web():
     from crawler.qt.lq_league_crawler import LeagueCrawler
+    from utils.league_cache import get_cached_leagues
 
-    leagues = []
-    for league_id, league_name, league_kind in LeagueCrawler().get_leagues_web():
-        leagues.append(
-            {
-                "league_id": int(league_id),
-                "league_name": str(league_name),
-                "kind_type": int(league_kind),
-            }
-        )
-    return leagues
+    def fetch_leagues():
+        return LeagueCrawler().get_league_metadata_web()
+
+    return get_cached_leagues("basketball", fetch_leagues, validator=_has_basketball_league_seasons)
+
+
+def _has_basketball_league_seasons(leagues):
+    return any(
+        isinstance(league.get("seasons"), list)
+        and len(league["seasons"]) > 0
+        and isinstance(league.get("name_en"), str)
+        and league["name_en"] != ""
+        for league in leagues
+    )
 
 
 def _expand_league_aliases(text):

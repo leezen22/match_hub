@@ -1,11 +1,12 @@
-﻿{
+{
     "version": "0.2.0",
     "configurations": [
+    
         {
             "name": "Python: Current File",
             "type": "debugpy",
             "request": "launch",
-            "python": "${workspaceFolder}\\venv\\Scripts\\python.exe",
+            "python": "${workspaceFolder}/venv/bin/python",
             "program": "${file}",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
@@ -18,8 +19,8 @@
             "name": "Basketball Update: lq_update",
             "type": "debugpy",
             "request": "launch",
-            "python": "${workspaceFolder}\\venv\\Scripts\\python.exe",
-            "program": "${workspaceFolder}\\lq_update.py",
+            "python": "${workspaceFolder}/venv/bin/python",
+            "program": "${workspaceFolder}/lq_update.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": false,
@@ -31,8 +32,8 @@
             "name": "Football Update: zq_update",
             "type": "debugpy",
             "request": "launch",
-            "python": "${workspaceFolder}\\venv\\Scripts\\python.exe",
-            "program": "${workspaceFolder}\\zq_update.py",
+            "python": "${workspaceFolder}/venv/bin/python",
+            "program": "${workspaceFolder}/zq_update.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": false,

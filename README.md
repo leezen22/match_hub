@@ -58,15 +58,31 @@ override that upper bound. Use `--include-finished` only for explicit
 repair/backfill work, and `--skip-schedule` when the schedule was already
 refreshed.
 
-Natural-language basketball update requests are supported directly in
-`match_hub`:
+Structured basketball and football update requests are supported directly in
+`match_hub`. Use this path for system-to-system calls:
 
 ```powershell
+.\venv\Scripts\python.exe update_request.py --structured --sport basketball --league-id 406 --action data
+.\venv\Scripts\python.exe update_request.py --structured --sport football --league-id 648 --action data
+.\venv\Scripts\python.exe update_request.py --structured --sport football --league-id 648 --action schedule
+```
+
+The structured path does not parse natural-language request text. It uses
+explicit `sport`, `league-id`, and `action` parameters, then lets the
+sport-specific updater resolve omitted Titan season/type metadata.
+
+Natural-language basketball and football update requests are supported for
+operator-facing use:
+
+```powershell
+.\venv\Scripts\python.exe update_request.py "帮我更新 wnba 本地比赛信息"
+.\venv\Scripts\python.exe update_request.py "更新 世亚预 比赛信息"
 .\venv\Scripts\python.exe lq_update.py request "更新联赛ID 406 赛季赛程"
 .\venv\Scripts\python.exe lq_update.py request "更新联赛ID 406 2026赛季赛程"
 .\venv\Scripts\python.exe lq_update.py request "更新联赛ID 406 2026赛季本地DB数据"
 .\venv\Scripts\python.exe lq_update.py request "帮我更新 wnba 赛程"
 .\venv\Scripts\python.exe lq_update.py request "帮我更新 美国女子职业篮球联赛 本地DB数据"
+.\venv\Scripts\python.exe zq_update.py request "更新 世亚预 比赛信息"
 ```
 
 The `request` stage is dry-run by default and prints the resolved stage and
@@ -76,7 +92,40 @@ kind from league metadata. League names can be resolved through Titan league
 metadata plus local aliases such as WNBA's English and Chinese names. Add
 `--execute` to perform the local DB write. Natural-language local DB data
 updates use the same default `matchTime <= now + 3 days` upper bound for score,
-odds, and odds-detail work:
+odds, and odds-detail work.
+
+When `update_request.py` runs a natural-language request with `--execute`, it
+only delegates to the sport-specific updater script. Normal script output is
+suppressed; a non-zero exit returns the error stream for diagnosis.
+
+League metadata is cached locally for 24 hours under
+`data/cache/league_metadata/`. When a natural-language request does not include
+a sport, `update_request.py` probes cached basketball and football league
+metadata. If exactly one sport matches, it routes to that updater. If both
+sports match, it stops with an ambiguity error and requires `--sport` or the
+structured interface.
+
+External projects should not read those cache files directly. Use the compact
+metadata query tool instead:
+
+```powershell
+.\venv\Scripts\python.exe scripts\query_league_metadata.py "更新 立陶甲 比赛信息"
+.\venv\Scripts\python.exe scripts\query_league_metadata.py "更新 wnba 赛程" --sport basketball
+```
+
+The query tool performs cached league metadata lookup inside `match_hub`,
+applies sport-specific aliases and normalization, and returns only the
+necessary JSON fields such as `sport`, `league_id`, `league_name`, `season`,
+`kind_type`, `league_type`, and `if_have_sub`. It never writes the local DB.
+For basketball, the cached league list preserves the useful fields already
+present in Titan `infoHeader_cn.js`, including `seasons`, country metadata, and
+source URL, while keeping the existing `league_id`, `league_name`, and
+`kind_type` fields stable for current update workflows. It also merges
+multi-language league and country names from Titan `leftData.js`, including
+simplified Chinese, traditional Chinese, and English names. If an older cache
+is missing season or multi-language fields, `match_hub` refreshes it
+automatically; a single-league season cache is kept only as a compatibility
+fallback.
 
 ```powershell
 .\venv\Scripts\python.exe lq_update.py request "更新联赛ID 406 赛季赛程" --execute

@@ -1,5 +1,7 @@
 import os
 import traceback
+from pathlib import Path
+
 import utils.fileUtil
 import utils.js2pyUtil
 from config import common_config, zqconfig_qt
@@ -37,7 +39,7 @@ def getleagsche(filePath):
     try:
         context = utils.js2pyUtil.jsLocjs(filePath)
         teamdict = dict_teaminfo(context.arrTeam)
-        matchSeason = os.path.abspath(os.path.dirname(filePath)).split("\\")[-1]
+        matchSeason = _match_season_from_path(filePath)
         arrLeague = context.arrLeague
         totalRound = arrLeague[7]
         for i in range(1, totalRound + 1):
@@ -69,7 +71,7 @@ def getSubsche(filePath):
     try:
         context = utils.js2pyUtil.jsLocjs(filePath)
         teamdict = dict_teaminfo(context.arrTeam)
-        matchSeason = os.path.abspath(os.path.dirname(filePath)).split("\\")[-1]
+        matchSeason = _match_season_from_path(filePath)
         subdict = {}
         subLeagueID = filename.split(".")[-2].split('_')[-1]
         subs = context.arrSubLeague
@@ -125,7 +127,7 @@ def getCupsche(filePath):
     try:
         context = utils.js2pyUtil.jsLocjs(filePath)
         teamdict = dict_teaminfo(context.arrTeam)
-        matchSeason = os.path.abspath(os.path.dirname(filePath)).split("\\")[-1]
+        matchSeason = _match_season_from_path(filePath)
         groupdict = {'1': 'A', '2': 'B', '3': 'C', '4': 'D', '5': 'E', '6': 'F', '7': 'G', '8': 'H', '9': 'I',
                      '10': 'J',
                      '11': 'K',
@@ -239,6 +241,10 @@ def dict_teaminfo(teamlist):
     for team in teamlist:
         dict[str(team[0])] = team[1]
     return dict
+
+
+def _match_season_from_path(filePath):
+    return Path(filePath).parent.name
 
 
 def amend_schejs():
