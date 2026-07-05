@@ -7,7 +7,6 @@ from pathlib import Path
 from config import common_config
 from utils import sql_util
 from utils.fileUtil import logLine
-from utils.proxyTools import ProxyTools
 
 USER_AGENTS = [
     # Chrome Windows
@@ -66,6 +65,8 @@ class WebUtil(object):
         ip = ''
         headers = dict(headers or {})
         if isProxy and proxy is None:
+            from utils.proxyTools import ProxyTools
+
             proxy = ProxyTools.get_http_proxy()
         if proxy:
             ip = proxy.split(":")[0]
@@ -126,6 +127,8 @@ class WebUtil(object):
         headers = dict(headers or {})
         data = data or {}
         if isProxy and proxy is None:
+            from utils.proxyTools import ProxyTools
+
             proxy = ProxyTools.get_http_proxy()
         if proxy:
             ip = proxy.split(":")[0]

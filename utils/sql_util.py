@@ -98,6 +98,9 @@ def insertDatas(table, datas):
 
 # 单条更新
 def upData(table, data, condition):
+    if not data:
+        print("SQL_UPDATE_SKIPPED_EMPTY_DATA table={0} condition={1}".format(table, condition))
+        return
     try:
         upsql = get_u_sql(table, data, condition)
         sqlExecute(upsql)
@@ -299,4 +302,3 @@ def list_2_values(data):
 #         print(e)
 #     else:
 #         db.close()
-
