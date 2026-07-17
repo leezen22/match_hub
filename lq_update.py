@@ -158,6 +158,10 @@ def up_match_data(scheduleIdArr):
 
         up_2in1Details_by_match(matchId, 8, 3)
         up_2in1Details_by_match(matchId, 3, 3)
+        if len(scheduleMatchList) > 0 and _is_terminal_match_state(scheduleMatchList[0][2]):
+            update_match_enrichment(matchId)
+        else:
+            print("技术统计/事件未完场，跳过: " + str(matchId))
 
 
 def _should_update_part_score(match_state, match_time):
@@ -223,6 +227,15 @@ def update_schedule_by_league_season(league_id, season, kind_type):
     ))
 
 
+def update_schedule_recent_seasons(league_id, kind_type, season_count=3):
+    seasons = _resolve_recent_seasons(league_id, season_count=season_count)
+    for season in seasons:
+        update_schedule_by_league_season(league_id, season, kind_type)
+    print("schedule recent seasons update finished: league_id={0}, seasons={1}".format(
+        league_id, seasons
+    ))
+
+
 def _season_values(season):
     from lq.formate.model import changeSeason
 
@@ -231,7 +244,13 @@ def _season_values(season):
     return sorted({raw_season, compact_season})
 
 
-def _select_schedule_ids_by_league_season(league_id, season, include_finished=False, limit=None, until_match_time=None):
+def _select_schedule_ids_by_league_season(
+        league_id,
+        season,
+        include_finished=False,
+        limit=None,
+        start_match_time=None,
+        until_match_time=None):
     from utils import sql_util
 
     season_values = _season_values(season)
@@ -240,6 +259,8 @@ def _select_schedule_ids_by_league_season(league_id, season, include_finished=Fa
         "leagueId={}".format(int(league_id)),
         "matchSeason in ({})".format(quoted_seasons),
     ]
+    if start_match_time is not None:
+        where.append("matchTime >= '{}'".format(sql_util.safe(str(start_match_time))))
     if until_match_time is not None:
         where.append("matchTime <= '{}'".format(sql_util.safe(str(until_match_time))))
     if not include_finished:
@@ -248,7 +269,9 @@ def _select_schedule_ids_by_league_season(league_id, season, include_finished=Fa
             "matchState>-1 "
             "or partscore_f in(0,1) "
             "or asianodds_f in(0,1,4) "
-            "or totalodds_f in(0,1,4)"
+            "or totalodds_f in(0,1,4) "
+            "or technical_f in(0,1) "
+            "or textlive_f in(0,1)"
             ")"
         )
     sql = (
@@ -268,6 +291,7 @@ def update_league_season_data(
         include_schedule=True,
         include_finished=False,
         limit=None,
+        start_match_time=None,
         until_match_time=None,
         until_days=3):
     if include_schedule:
@@ -279,19 +303,48 @@ def update_league_season_data(
         season,
         include_finished=include_finished,
         limit=limit,
+        start_match_time=start_match_time,
         until_match_time=resolved_until_match_time,
     )
     if len(schedule_ids) == 0:
-        print("no schedule ids need local db data update: league_id={0}, season={1}, until_match_time={2}".format(
-            league_id, season, resolved_until_match_time
+        print("no schedule ids need local db data update: league_id={0}, season={1}, start_match_time={2}, until_match_time={3}".format(
+            league_id, season, start_match_time, resolved_until_match_time
         ))
         return
 
-    print("start league-season local db data update: league_id={0}, season={1}, count={2}, until_match_time={3}".format(
-        league_id, season, len(schedule_ids), resolved_until_match_time
+    print("start league-season local db data update: league_id={0}, season={1}, count={2}, start_match_time={3}, until_match_time={4}".format(
+        league_id, season, len(schedule_ids), start_match_time, resolved_until_match_time
     ))
     up_match_data(schedule_ids)
     print("league-season local db data update finished: count={0}".format(len(schedule_ids)))
+
+
+def update_league_recent_seasons_data(
+        league_id,
+        kind_type,
+        include_schedule=True,
+        include_finished=False,
+        limit=None,
+        start_match_time=None,
+        until_match_time=None,
+        until_days=3,
+        season_count=3):
+    seasons = _resolve_recent_seasons(league_id, season_count=season_count)
+    for season in seasons:
+        update_league_season_data(
+            league_id,
+            season,
+            kind_type,
+            include_schedule=include_schedule,
+            include_finished=include_finished,
+            limit=limit,
+            start_match_time=start_match_time,
+            until_match_time=until_match_time,
+            until_days=until_days,
+        )
+    print("league recent seasons local db data update finished: league_id={0}, seasons={1}".format(
+        league_id, seasons
+    ))
 
 
 def parse_natural_update_request(
@@ -302,11 +355,14 @@ def parse_natural_update_request(
         action=None,
         include_finished=False,
         limit=None,
+        start_match_time=None,
         until_match_time=None,
-        until_days=3):
+        until_days=3,
+        season_count=3):
     text = str(request or "").strip()
     resolved_league_id = league_id if league_id is not None else _parse_league_id(text)
-    resolved_season = season or _parse_season(text)
+    requested_season = season or _parse_season(text)
+    resolved_season = requested_season
     resolved_action = action or _parse_action(text)
     resolved_kind_type = kind_type if kind_type is not None else _parse_kind_type(text)
     resolved_league = None
@@ -327,34 +383,42 @@ def parse_natural_update_request(
         if resolved_league is None:
             raise ValueError("could not resolve Titan kind_type for league_id={}".format(resolved_league_id))
         resolved_kind_type = resolved_league["kind_type"]
-    if resolved_season is None:
-        resolved_season = _resolve_latest_season(resolved_league_id)
+    recent_seasons = _resolve_recent_seasons(resolved_league_id, season_count=season_count)
+    if resolved_season is not None:
+        _ensure_recent_season_or_error(resolved_league_id, resolved_season, recent_seasons)
 
-    stage = "schedule-league-season" if resolved_action == "schedule" else "league-season-data"
+    if resolved_action == "schedule":
+        stage = "schedule-league-season" if resolved_season is not None else "schedule-recent-seasons"
+    else:
+        stage = "league-season-data" if resolved_season is not None else "league-recent-seasons-data"
     resolved_until_match_time = None
-    if stage == "league-season-data":
+    if stage in ("league-season-data", "league-recent-seasons-data"):
         resolved_until_match_time = _resolve_until_match_time(until_match_time, until_days)
     command = [
         "lq_update.py",
         stage,
         "--league-id",
         str(resolved_league_id),
-        "--season",
-        str(resolved_season),
         "--kind-type",
         str(resolved_kind_type),
     ]
-    if stage == "league-season-data":
+    if resolved_season is not None:
+        command.extend(["--season", str(resolved_season)])
+    if stage in ("league-season-data", "league-recent-seasons-data"):
         if _skip_schedule(text):
             command.append("--skip-schedule")
         if include_finished or _include_finished(text):
             command.append("--include-finished")
         if limit is not None:
             command.extend(["--limit", str(limit)])
+        if start_match_time is not None:
+            command.extend(["--start-time", str(start_match_time)])
         if until_match_time is not None:
             command.extend(["--until-time", str(until_match_time)])
         elif until_days is not None:
             command.extend(["--until-days", str(until_days)])
+    if stage in ("schedule-recent-seasons", "league-recent-seasons-data") and season_count is not None:
+        command.extend(["--season-count", str(season_count)])
 
     return {
         "request": text,
@@ -363,10 +427,14 @@ def parse_natural_update_request(
         "league_id": resolved_league_id,
         "league_name": resolved_league["league_name"] if resolved_league is not None else _resolve_league_name_by_id(resolved_league_id),
         "season": resolved_season,
+        "recent_seasons": recent_seasons,
+        "season_policy": "only_current_and_previous_2_seasons",
         "kind_type": resolved_kind_type,
         "include_finished": bool(include_finished or _include_finished(text)),
         "skip_schedule": bool(_skip_schedule(text)),
         "limit": limit,
+        "season_count": int(season_count),
+        "match_time_lower_bound": start_match_time,
         "match_time_upper_bound": resolved_until_match_time,
         "match_time_upper_bound_policy": "current_time_plus_{}_days".format(until_days) if stage == "league-season-data" and until_match_time is None and until_days is not None else None,
         "command": command,
@@ -385,8 +453,10 @@ def run_natural_update_request(
         action=None,
         include_finished=False,
         limit=None,
+        start_match_time=None,
         until_match_time=None,
-        until_days=3):
+        until_days=3,
+        season_count=3):
     plan = parse_natural_update_request(
         request,
         league_id=league_id,
@@ -395,13 +465,17 @@ def run_natural_update_request(
         action=action,
         include_finished=include_finished,
         limit=limit,
+        start_match_time=start_match_time,
         until_match_time=until_match_time,
         until_days=until_days,
+        season_count=season_count,
     )
     if execute:
         if plan["stage"] == "schedule-league-season":
             update_schedule_by_league_season(plan["league_id"], plan["season"], plan["kind_type"])
-        else:
+        elif plan["stage"] == "schedule-recent-seasons":
+            update_schedule_recent_seasons(plan["league_id"], plan["kind_type"], season_count=plan["season_count"])
+        elif plan["stage"] == "league-season-data":
             update_league_season_data(
                 plan["league_id"],
                 plan["season"],
@@ -409,8 +483,21 @@ def run_natural_update_request(
                 include_schedule=not plan["skip_schedule"],
                 include_finished=plan["include_finished"],
                 limit=plan["limit"],
+                start_match_time=plan["match_time_lower_bound"],
                 until_match_time=plan["match_time_upper_bound"],
                 until_days=None,
+            )
+        else:
+            update_league_recent_seasons_data(
+                plan["league_id"],
+                plan["kind_type"],
+                include_schedule=not plan["skip_schedule"],
+                include_finished=plan["include_finished"],
+                limit=plan["limit"],
+                start_match_time=plan["match_time_lower_bound"],
+                until_match_time=plan["match_time_upper_bound"],
+                until_days=None,
+                season_count=plan["season_count"],
             )
     return plan
 
@@ -549,10 +636,17 @@ def _resolve_until_match_time(until_match_time=None, until_days=3):
 
 
 def _resolve_latest_season(league_id):
+    return _resolve_recent_seasons(league_id, season_count=1)[0]
+
+
+def _resolve_recent_seasons(league_id, season_count=3):
     from config import lqconfig_qt
     from utils import js2pyUtil
     from utils.webUtil import WebUtil
 
+    season_limit = int(season_count)
+    if season_limit <= 0:
+        raise ValueError("season_count must be greater than 0")
     url = lqconfig_qt.seajsWebdir + "sea{}.js".format(int(league_id))
     state, content = WebUtil.requests_get(url, headers=lqconfig_qt.headers, sourceName="resolve lq season")
     if state != 1 or not content:
@@ -563,7 +657,23 @@ def _resolve_latest_season(league_id):
     seasons = [str(item[0]) for item in parsed[1].arrSeason if len(item) > 0]
     if not seasons:
         raise ValueError("Titan season list is empty for league_id={}".format(league_id))
-    return seasons[0]
+    return seasons[:season_limit]
+
+
+def _ensure_recent_season_or_error(league_id, season, recent_seasons=None):
+    recent = recent_seasons or _resolve_recent_seasons(league_id)
+    requested_values = set(_season_values(season))
+    allowed_values = set()
+    for value in recent:
+        allowed_values.update(_season_values(value))
+    if requested_values.isdisjoint(allowed_values):
+        raise ValueError(
+            "season {0} is outside allowed range for league_id={1}; allowed recent seasons={2}".format(
+                season,
+                league_id,
+                recent,
+            )
+        )
 
 
 def _parse_action(text):
@@ -613,12 +723,187 @@ def update_details():
     LqOddsService.up_2in1Details_byCid(3, 3)
 
 
-def run_all():
+def _is_terminal_match_state(match_state):
+    try:
+        return int(match_state) in (-1, -4)
+    except Exception:
+        return False
+
+
+def _flag_after_collect(result, match_state):
+    if not result.get("request_ok"):
+        return None
+    return 2 if _is_terminal_match_state(match_state) else 1
+
+
+def _match_enrichment_state(schedule_id):
+    from utils import sql_util
+
+    rows = sql_util.select_dicts(
+        "SELECT scheduleID,matchState,technical_f,textlive_f FROM lq_schedule WHERE scheduleID={0}".format(
+            int(schedule_id)
+        )
+    )
+    if len(rows) == 0:
+        return None
+    return rows[0]
+
+
+def update_match_technical(schedule_id, force=False, match_state=None):
+    from lq.service.technical import Technical
+    from utils import sql_util
+
+    state = _match_enrichment_state(schedule_id)
+    if state is None:
+        print("technical update skipped, match not found: scheduleID={0}".format(schedule_id))
+        return {"state": 0, "request_ok": False, "skipped": True, "reason": "match_not_found"}
+    if not force and int(state.get("technical_f") or 0) == 2:
+        print("technical update skipped, already finished: scheduleID={0}".format(schedule_id))
+        return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
+
+    result = Technical.upMatchTechnical(schedule_id)
+    resolved_match_state = match_state if match_state is not None else state.get("matchState")
+    next_flag = _flag_after_collect(result, resolved_match_state)
+    if next_flag is not None:
+        sql_util.upData('lq_schedule', {
+            'technical_f': next_flag,
+            'teamTech': 1 if next_flag == 2 and result.get("periods", 0) > 0 else 0,
+            'teamtechnic_has_data': 1 if result.get("periods", 0) > 0 else 0,
+            'playertechnic_has_data': 1 if result.get("players", 0) > 0 else 0,
+        }, {'scheduleID': schedule_id})
+    print("technical update finished: scheduleID={0}, teams={1}, players={2}, periods={3}".format(
+        schedule_id,
+        result.get("teams", 0),
+        result.get("players", 0),
+        result.get("periods", 0),
+    ))
+    return result
+
+
+def update_match_text_live(schedule_id, force=False, match_state=None):
+    from lq.service.technical import Technical
+    from utils import sql_util
+
+    state = _match_enrichment_state(schedule_id)
+    if state is None:
+        print("text live update skipped, match not found: scheduleID={0}".format(schedule_id))
+        return {"state": 0, "request_ok": False, "skipped": True, "reason": "match_not_found"}
+    if not force and int(state.get("textlive_f") or 0) == 2:
+        print("text live update skipped, already finished: scheduleID={0}".format(schedule_id))
+        return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
+
+    result = Technical.upMatchTextLive(schedule_id)
+    resolved_match_state = match_state if match_state is not None else state.get("matchState")
+    next_flag = _flag_after_collect(result, resolved_match_state)
+    if next_flag is not None:
+        sql_util.upData('lq_schedule', {
+            'textlive_f': next_flag,
+            'textlive_has_data': 1 if result.get("events", 0) > 0 else 0,
+        }, {'scheduleID': schedule_id})
+    print("text live update finished: scheduleID={0}, events={1}".format(
+        schedule_id,
+        result.get("events", 0),
+    ))
+    return result
+
+
+def update_match_enrichment_task(schedule_id, include_technical=True, include_text_live=True, force=False):
+    state = _match_enrichment_state(schedule_id)
+    if state is None:
+        print("enrichment update skipped, match not found: scheduleID={0}".format(schedule_id))
+        return {"technical": None, "text_live": None, "skipped": True, "reason": "match_not_found"}
+
+    technical = None
+    text_live = None
+    if include_technical:
+        technical = update_match_technical(schedule_id, force=force, match_state=state.get("matchState"))
+    if include_text_live:
+        text_live = update_match_text_live(schedule_id, force=force, match_state=state.get("matchState"))
+    return {"technical": technical, "text_live": text_live}
+
+
+def update_match_enrichment(schedule_id, force=False):
+    return update_match_enrichment_task(schedule_id, force=force)
+
+
+def update_enrichment_pending(
+        league_id=None,
+        season=None,
+        season_count=None,
+        start_match_time=None,
+        until_match_time=None,
+        limit=None):
+    from utils import sql_util
+
+    columns = {row["Field"] for row in sql_util.select_dicts("SHOW COLUMNS FROM `lq_schedule`")}
+    if "technical_f" not in columns or "textlive_f" not in columns:
+        print("enrichment pending update skipped, run scripts/migrate_lq_technical_event_tables.py first")
+        return []
+
+    should_apply_default_window = start_match_time is None and until_match_time is None and season is None and season_count is None
+    if start_match_time is None and should_apply_default_window:
+        start_match_time = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    if until_match_time is None and should_apply_default_window:
+        until_match_time = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+
+    where = [
+        "matchState in(-1,-4)",
+        "(technical_f in(0,1) or textlive_f in(0,1))",
+    ]
+    if start_match_time is not None:
+        where.append("matchTime >= '{}'".format(sql_util.safe(str(start_match_time))))
+    if until_match_time is not None:
+        where.append("matchTime <= '{}'".format(sql_util.safe(str(until_match_time))))
+    if league_id is not None:
+        where.insert(0, "leagueId={}".format(int(league_id)))
+    if season is not None:
+        season_values = _season_values(season)
+        quoted_seasons = ",".join("'{}'".format(sql_util.safe(value)) for value in season_values)
+        where.append("matchSeason in ({})".format(quoted_seasons))
+    elif league_id is not None and season_count is not None:
+        season_values = []
+        for recent_season in _resolve_recent_seasons(league_id, season_count=season_count):
+            season_values.extend(_season_values(recent_season))
+        quoted_seasons = ",".join("'{}'".format(sql_util.safe(value)) for value in sorted(set(season_values)))
+        where.append("matchSeason in ({})".format(quoted_seasons))
+    sql = (
+        "SELECT scheduleID FROM lq_schedule WHERE {where} "
+        "ORDER BY matchTime ASC"
+    ).format(where=" and ".join(where))
+    if limit is not None:
+        sql += " LIMIT {}".format(int(limit))
+
+    rows = sql_util.select_rows(sql)
+    schedule_ids = [row[0] for row in rows]
+    if len(schedule_ids) == 0:
+        print("no pending enrichment matches: league_id={0}, season={1}, season_count={2}, start_match_time={3}, until_match_time={4}".format(
+            league_id, season, season_count, start_match_time, until_match_time
+        ))
+        return []
+
+    print("start pending enrichment update: league_id={0}, season={1}, season_count={2}, count={3}, start_match_time={4}, until_match_time={5}".format(
+        league_id, season, season_count, len(schedule_ids), start_match_time, until_match_time
+    ))
+    for schedule_id in schedule_ids:
+        update_match_enrichment(schedule_id)
+    print("pending enrichment update finished: count={0}".format(len(schedule_ids)))
+    return schedule_ids
+
+
+def run_all(league_id=None, season=None, season_count=None, start_match_time=None, until_match_time=None, limit=None):
     update_schedule_js()
     update_schedule()
     update_score()
     update_odds()
     update_details()
+    update_enrichment_pending(
+        league_id=league_id,
+        season=season,
+        season_count=season_count,
+        start_match_time=start_match_time,
+        until_match_time=until_match_time,
+        limit=limit,
+    )
 
 
 def main():
@@ -634,9 +919,15 @@ def main():
             "score",
             "odds",
             "details",
+            "technical",
+            "text-live",
+            "enrichment",
+            "enrichment-pending",
             "schedule-local",
             "schedule-league-season",
+            "schedule-recent-seasons",
             "league-season-data",
+            "league-recent-seasons-data",
             "request",
         ],
         help="Task stage to run. Default: all.",
@@ -662,12 +953,21 @@ def main():
         help="For league-season-data, include finished rows even when local update flags are closed.",
     )
     parser.add_argument("--limit", type=int, help="Limit selected schedule ids for league-season-data.")
+    parser.add_argument("--schedule-id", type=int, help="Titan basketball scheduleID for single-match enrichment tasks.")
+    parser.add_argument("--force", action="store_true", help="For single-match enrichment tasks, ignore finished flags and collect again.")
+    parser.add_argument("--start-time", help="For league data updates, only select matches at or after this matchTime.")
     parser.add_argument("--until-time", help="For score/odds/detail data updates, only select matches at or before this matchTime.")
     parser.add_argument(
         "--until-days",
         type=int,
         default=3,
         help="For score/odds/detail data updates, default upper bound is now plus this many days. Default: 3.",
+    )
+    parser.add_argument(
+        "--season-count",
+        type=int,
+        default=3,
+        help="For recent-season basketball updates, include current season plus this many total recent seasons. Default: 3.",
     )
     parser.add_argument("--action", choices=["schedule", "data"], help="Override parsed natural-language action.")
     parser.add_argument(
@@ -678,7 +978,14 @@ def main():
     args = parser.parse_args()
 
     if args.stage == "all":
-        run_all()
+        run_all(
+            league_id=args.league_id,
+            season=args.season,
+            season_count=args.season_count,
+            start_match_time=args.start_time,
+            until_match_time=args.until_time,
+            limit=args.limit,
+        )
     elif args.stage == "schedule-js":
         update_schedule_js()
     elif args.stage == "schedule":
@@ -689,6 +996,27 @@ def main():
         update_odds()
     elif args.stage == "details":
         update_details()
+    elif args.stage == "technical":
+        if args.schedule_id is None:
+            parser.error("technical requires --schedule-id")
+        update_match_technical(args.schedule_id, force=args.force)
+    elif args.stage == "text-live":
+        if args.schedule_id is None:
+            parser.error("text-live requires --schedule-id")
+        update_match_text_live(args.schedule_id, force=args.force)
+    elif args.stage == "enrichment":
+        if args.schedule_id is None:
+            parser.error("enrichment requires --schedule-id")
+        update_match_enrichment(args.schedule_id, force=args.force)
+    elif args.stage == "enrichment-pending":
+        update_enrichment_pending(
+            league_id=args.league_id,
+            season=args.season,
+            season_count=args.season_count,
+            start_match_time=args.start_time,
+            until_match_time=args.until_time,
+            limit=args.limit,
+        )
     elif args.stage == "schedule-local":
         from lq.service.schedulejs import upScheJsLocal
 
@@ -696,11 +1024,24 @@ def main():
     elif args.stage == "schedule-league-season":
         if args.league_id is None or args.season is None:
             parser.error("schedule-league-season requires --league-id and --season")
+        try:
+            _ensure_recent_season_or_error(args.league_id, args.season, _resolve_recent_seasons(args.league_id, args.season_count))
+        except ValueError as exc:
+            parser.error(str(exc))
         kind_type = args.kind_type if args.kind_type is not None else _resolve_kind_type_by_league_id_or_error(parser, args.league_id)
         update_schedule_by_league_season(args.league_id, args.season, kind_type)
+    elif args.stage == "schedule-recent-seasons":
+        if args.league_id is None:
+            parser.error("schedule-recent-seasons requires --league-id")
+        kind_type = args.kind_type if args.kind_type is not None else _resolve_kind_type_by_league_id_or_error(parser, args.league_id)
+        update_schedule_recent_seasons(args.league_id, kind_type, season_count=args.season_count)
     elif args.stage == "league-season-data":
         if args.league_id is None or args.season is None:
             parser.error("league-season-data requires --league-id and --season")
+        try:
+            _ensure_recent_season_or_error(args.league_id, args.season, _resolve_recent_seasons(args.league_id, args.season_count))
+        except ValueError as exc:
+            parser.error(str(exc))
         kind_type = args.kind_type if args.kind_type is not None else _resolve_kind_type_by_league_id_or_error(parser, args.league_id)
         update_league_season_data(
             args.league_id,
@@ -709,25 +1050,46 @@ def main():
             include_schedule=not args.skip_schedule,
             include_finished=args.include_finished,
             limit=args.limit,
+            start_match_time=args.start_time,
             until_match_time=args.until_time,
             until_days=args.until_days,
+        )
+    elif args.stage == "league-recent-seasons-data":
+        if args.league_id is None:
+            parser.error("league-recent-seasons-data requires --league-id")
+        kind_type = args.kind_type if args.kind_type is not None else _resolve_kind_type_by_league_id_or_error(parser, args.league_id)
+        update_league_recent_seasons_data(
+            args.league_id,
+            kind_type,
+            include_schedule=not args.skip_schedule,
+            include_finished=args.include_finished,
+            limit=args.limit,
+            start_match_time=args.start_time,
+            until_match_time=args.until_time,
+            until_days=args.until_days,
+            season_count=args.season_count,
         )
     elif args.stage == "request":
         request = " ".join(args.request_text).strip()
         if not request:
             parser.error("request stage requires natural-language request text")
-        plan = run_natural_update_request(
-            request,
-            execute=args.execute,
-            league_id=args.league_id,
-            season=args.season,
-            kind_type=args.kind_type,
-            action=args.action,
-            include_finished=args.include_finished,
-            limit=args.limit,
-            until_match_time=args.until_time,
-            until_days=args.until_days,
-        )
+        try:
+            plan = run_natural_update_request(
+                request,
+                execute=args.execute,
+                league_id=args.league_id,
+                season=args.season,
+                kind_type=args.kind_type,
+                action=args.action,
+                include_finished=args.include_finished,
+                limit=args.limit,
+                start_match_time=args.start_time,
+                until_match_time=args.until_time,
+                until_days=args.until_days,
+                season_count=args.season_count,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
         print(json.dumps({**plan, "executed": bool(args.execute)}, ensure_ascii=False, indent=2))
     # LQleague.getSchejsPending([1,'NBA',1])
 
@@ -748,9 +1110,10 @@ if __name__ == '__main__':
     else:
         from lq.service.schedulejs import upScheJsLocal
 
-        update_schedule_js()
-        upScheJsLocal()
-        update_schedule()
-        update_score()
-        update_odds()
-        update_details()
+        # update_schedule_js()
+        # upScheJsLocal()
+        # update_schedule()
+        # update_score()
+        # update_odds()
+        # update_details()
+        update_enrichment_pending(league_id=2, season_count=3)

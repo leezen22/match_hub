@@ -19,6 +19,8 @@ Run one update stage:
 .\venv\Scripts\python.exe lq_update.py score
 .\venv\Scripts\python.exe lq_update.py odds
 .\venv\Scripts\python.exe lq_update.py details
+.\venv\Scripts\python.exe lq_update.py enrichment --schedule-id 705106
+.\venv\Scripts\python.exe lq_update.py enrichment-pending --league-id 406 --season-count 3 --start-time "2026-07-01 00:00:00" --until-time "2026-07-02 00:00:00" --limit 20
 
 .\venv\Scripts\python.exe zq_update.py schedule-js
 .\venv\Scripts\python.exe zq_update.py schedule
@@ -30,6 +32,7 @@ Run a narrow basketball schedule refresh for one Titan league/cup season:
 
 ```powershell
 .\venv\Scripts\python.exe lq_update.py schedule-league-season --league-id 406 --season 2026
+.\venv\Scripts\python.exe lq_update.py schedule-recent-seasons --league-id 406
 ```
 
 `--kind-type 1` is league schedule JS, and `--kind-type 2` is cup schedule JS
@@ -37,6 +40,31 @@ such as `c406.js`. If omitted, `match_hub` resolves `kind_type` from Titan
 league metadata for the given league id. This command fetches and parses
 schedule rows only. It does not update live scores, odds, odds details,
 technical statistics, or event timelines.
+
+Run basketball single-match enrichment:
+
+```powershell
+.\venv\Scripts\python.exe scripts\migrate_lq_technical_event_tables.py
+.\venv\Scripts\python.exe lq_update.py technical --schedule-id 705106
+.\venv\Scripts\python.exe lq_update.py text-live --schedule-id 705106
+.\venv\Scripts\python.exe lq_update.py enrichment --schedule-id 705106
+```
+
+`technical` writes raw tech data, player match stats, and team stats into
+`lq_teamtechnic_period`; `period=0` is full game and `period=1..4` are quarters.
+The full-game rows also include Titan's live team supplement fields:
+`quarterFoul`, `remainingPause`, `twoPointScore`, and `threePointScore`.
+`text-live` writes raw text-live data and play-by-play event rows. `enrichment`
+runs both. `enrichment-pending` selects matches whose `technical_f` or
+`textlive_f` is still `0/1`; pass `--league-id` to limit it to one league and
+`--season-count` to limit that league to recent seasons. A normal successful
+request marks finished matches as `2`, even when Titan returns no team stats,
+no player stats, or no event rows. Use `teamtechnic_has_data`,
+`playertechnic_has_data`, and `textlive_has_data` on `lq_schedule` to distinguish
+normal completion with data from normal completion without data. Running
+`lq_update.py all --league-id 406
+--season-count 3` also passes those bounds into the recent pending enrichment
+window after score, odds, and detail updates.
 
 Schedule data usually changes slowly, so this narrow refresh is a good first
 step when a league is missing schedule rows or the local mirror is delayed.
@@ -47,10 +75,19 @@ Run a narrow basketball local DB data refresh for one Titan league/cup season:
 
 ```powershell
 .\venv\Scripts\python.exe lq_update.py league-season-data --league-id 406 --season 2026
+.\venv\Scripts\python.exe lq_update.py league-recent-seasons-data --league-id 406
+.\venv\Scripts\python.exe lq_update.py league-recent-seasons-data --league-id 406 --start-time "2026-01-01 00:00:00" --season-count 3
 ```
 
-This refreshes the league-season schedule first, then updates selected local DB
-rows whose match state or update flags still need score, odds, or odds-detail
+By default, `league-season-data` only accepts the current season plus the
+previous two seasons for that league. Older explicit seasons are rejected to
+avoid accidental historical backfills. `league-recent-seasons-data` runs the
+same flow for those three allowed seasons. Use `--season-count` to change the
+number of recent seasons, and `--start-time` to add a lower `matchTime` bound.
+
+This refreshes each league-season schedule first, then updates selected local DB
+rows whose match state or update flags still need score, odds, odds-detail,
+technical-stat, player-stat, or event-timeline
 work. Schedule refresh is full for the league season, but score, odds, and
 odds-detail polling is bounded to matches whose `matchTime` is no later than
 current time plus 3 days by default. Use `--until-days` or `--until-time` to

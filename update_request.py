@@ -70,8 +70,10 @@ def parse_update_request(
         action: str | None = None,
         include_finished: bool = False,
         limit: int | None = None,
+        start_time: str | None = None,
         until_time: str | None = None,
-        until_days: int | None = 3) -> dict[str, Any]:
+        until_days: int | None = 3,
+        season_count: int = 3) -> dict[str, Any]:
     text = request.strip()
     resolved_sport = _resolve_sport_from_request(
         text,
@@ -88,8 +90,10 @@ def parse_update_request(
             action=action,
             include_finished=include_finished,
             limit=limit,
+            start_time=start_time,
             until_time=until_time,
             until_days=until_days,
+            season_count=season_count,
         )
     command = [_entrypoint_for_sport(resolved_sport), "request", text]
     if league_id is not None:
@@ -112,10 +116,14 @@ def parse_update_request(
     if limit is not None:
         command.extend(["--limit", str(limit)])
     if _parse_action(text, action) == "data":
+        if start_time is not None:
+            command.extend(["--start-time", str(start_time)])
         if until_time is not None:
             command.extend(["--until-time", str(until_time)])
         elif until_days is not None:
             command.extend(["--until-days", str(until_days)])
+    if resolved_sport == "basketball" and season is None:
+        command.extend(["--season-count", str(season_count)])
     return {
         "request": text,
         "sport": resolved_sport,
@@ -140,8 +148,10 @@ def parse_structured_update_request(
         action: str = "data",
         include_finished: bool = False,
         limit: int | None = None,
+        start_time: str | None = None,
         until_time: str | None = None,
-        until_days: int | None = 3) -> dict[str, Any]:
+        until_days: int | None = 3,
+        season_count: int = 3) -> dict[str, Any]:
     resolved_sport = _resolve_sport("", sport)
     if resolved_sport == "football":
         from zq_update import parse_natural_update_request
@@ -170,8 +180,10 @@ def parse_structured_update_request(
             action=action,
             include_finished=include_finished,
             limit=limit,
+            start_match_time=start_time,
             until_match_time=until_time,
             until_days=until_days,
+            season_count=season_count,
         )
     return {
         **plan,
@@ -286,6 +298,8 @@ def _execute_structured_plan(**kwargs: Any) -> None:
         run_natural_update_request(
             **common,
             kind_type=kwargs.get("kind_type"),
+            start_match_time=kwargs.get("start_time"),
+            season_count=kwargs.get("season_count", 3),
         )
 
 
@@ -302,8 +316,10 @@ def main() -> None:
     parser.add_argument("--action", choices=["schedule", "data"], default=None)
     parser.add_argument("--include-finished", action="store_true")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--start-time", default=None)
     parser.add_argument("--until-time", default=None)
     parser.add_argument("--until-days", type=int, default=3)
+    parser.add_argument("--season-count", type=int, default=3)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
 
@@ -328,6 +344,8 @@ def main() -> None:
         limit=args.limit,
         until_time=args.until_time,
         until_days=args.until_days,
+        start_time=args.start_time,
+        season_count=args.season_count,
         execute=args.execute,
     )
     print(json.dumps(output, ensure_ascii=False, indent=2))
@@ -378,8 +396,10 @@ def _resolve_by_upstream_metadata(
         action: str | None,
         include_finished: bool,
         limit: int | None,
+        start_time: str | None,
         until_time: str | None,
-        until_days: int | None) -> dict[str, Any]:
+        until_days: int | None,
+        season_count: int) -> dict[str, Any]:
     candidates = []
     failures = {}
     try:
@@ -392,8 +412,10 @@ def _resolve_by_upstream_metadata(
             action=action,
             include_finished=include_finished,
             limit=limit,
+            start_match_time=start_time,
             until_match_time=until_time,
             until_days=until_days,
+            season_count=season_count,
         )
         candidates.append({**plan, "sport": "basketball", "entrypoint": "lq_update.py"})
     except Exception as exc:

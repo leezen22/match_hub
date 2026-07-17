@@ -96,6 +96,33 @@ def insertDatas(table, datas):
         finished = True
     return finished
 
+
+def replace_table_rows(table, condition, datas):
+    db = None
+    try:
+        db = reConndb()
+        cursor = db.cursor()
+        cursor.execute(get_d_sql(table, condition))
+        for data in datas:
+            cursor.execute(get_i_sql(table, data))
+        db.commit()
+    except BaseException as e:
+        if db:
+            db.rollback()
+        print("SQL_REPLACE_ROWS_FAILED table={0} condition={1} error={2}".format(table, condition, e))
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
+        return False
+    else:
+        return True
+    finally:
+        if db:
+            db.close()
+
+
+def replace_table_row(table, condition, data):
+    return replace_table_rows(table, condition, [data] if data else [])
+
 # 单条更新
 def upData(table, data, condition):
     if not data:
@@ -254,7 +281,9 @@ def dict_2_str(dictin):
     '''
     tmplist = []
     for k, v in dictin.items():
-        if isinstance(v, int) or isinstance(v, float):
+        if v is None:
+            tmp = "%s=NULL" % str(k)
+        elif isinstance(v, int) or isinstance(v, float):
             tmp = "%s=%s" % (str(k), v)
         else:
             tmp = "%s='%s'" % (str(k), safe(str(v)))
@@ -269,7 +298,9 @@ def dict_2_str_and(dictin):
     '''
     tmplist = []
     for k, v in dictin.items():
-        if isinstance(v, int) or isinstance(v, float):
+        if v is None:
+            tmp = "%s IS NULL" % str(k)
+        elif isinstance(v, int) or isinstance(v, float):
             tmp = "%s=%s" % (str(k), v)
         else:
             tmp = "%s='%s'" % (str(k), safe(str(v)))
@@ -280,7 +311,9 @@ def dict_2_str_and(dictin):
 def list_2_values(data):
     values = []
     for item in data:
-        if isinstance(item, int) or isinstance(item, float):
+        if item is None:
+            tmp = "NULL"
+        elif isinstance(item, int) or isinstance(item, float):
             tmp = str(item)
         else:
             tmp = "'" + str(item) + "'"
