@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import threading
 import traceback
 from typing import Iterable, Optional
@@ -116,8 +117,8 @@ def parse_js_content(content: str, source: str, required_names: Optional[Iterabl
                     traceback.format_exc(),
                 ],
             )
-            print("JS parse failed: {0}".format(source))
-            print(fallback_error)
+            print("JS parse failed: {0}".format(source), file=sys.stderr)
+            print(fallback_error, file=sys.stderr)
         else:
             logLine(common_config.js2pyweb_e, ["JS_PARSE_FALLBACK_OK", source, repr(e)])
             result = [1, context]
