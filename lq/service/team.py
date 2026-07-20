@@ -289,6 +289,7 @@ def summarize_basic_information_status():
         "league_status": _group_counts("lq_league", "collection_status"),
         "team_status": _group_counts("lq_team", "collection_status"),
         "player_status": _group_counts("lq_player_profile", "collection_status"),
+        "player_photo_status": _group_counts("lq_player_profile", "photo_collection_status"),
         "roster_batch_status": _group_counts("lq_team_roster_snapshot_batch", "collection_status"),
         "remaining_roster_teams": _scalar(
             "SELECT count(*) FROM lq_team t WHERE t.collection_status='success' "

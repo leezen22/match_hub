@@ -50,6 +50,7 @@ class Technical(object):
                     'sourceOperation': result['sourceOperation'],
                     'captureID': result['captureID'],
                     'capturedAt': result['capturedAt'],
+                    'recordedAt': _utc_now_naive(),
                 })
             if len(result['teamPeriodRows']) > 0:
                 sql_util.delData('lq_teamtechnic_period', {'scheduleID': match[0]})
@@ -77,6 +78,7 @@ class Technical(object):
                 'sourceOperation': result['sourceOperation'],
                 'captureID': result['captureID'],
                 'capturedAt': result['capturedAt'],
+                'recordedAt': _utc_now_naive(),
             }) and persist_ok
         if len(result['teamPeriodRows']) > 0:
             if sql_util.replace_table_rows('lq_teamtechnic_period', {'scheduleID': scheduleID}, result['teamPeriodRows']):
@@ -106,6 +108,7 @@ class Technical(object):
                 'sourceOperation': text_live['sourceOperation'],
                 'captureID': text_live['captureID'],
                 'capturedAt': text_live['capturedAt'],
+                'recordedAt': _utc_now_naive(),
             }) and persist_ok
         if len(rows) > 0:
             if not sql_util.replace_table_rows('lq_textlive', {'scheduleID': scheduleID}, rows):
@@ -419,8 +422,8 @@ class Technical(object):
             }
         match_id = matchs[0][1]
         url, content, request_ok = Technical._fetch_txt_live_js(scheduleID)
-        events = Technical._parse_txt_live_events(scheduleID, match_id, content)
         capture = _new_capture_metadata(request_ok)
+        events = Technical._parse_txt_live_events(scheduleID, match_id, content)
         for row in events:
             row['rawCaptureID'] = capture['captureID']
         return {
@@ -497,6 +500,10 @@ def _new_capture_metadata(request_ok):
         return {'captureID': None, 'capturedAt': None}
     return {
         'captureID': str(uuid.uuid4()),
-        # MySQL DATETIME is timezone-naive; this column is explicitly defined as UTC.
-        'capturedAt': datetime.now(timezone.utc).replace(tzinfo=None),
+        'capturedAt': _utc_now_naive(),
     }
+
+
+def _utc_now_naive():
+    # MySQL DATETIME is timezone-naive; capture lineage columns are explicitly UTC.
+    return datetime.now(timezone.utc).replace(tzinfo=None)

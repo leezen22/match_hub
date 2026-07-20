@@ -284,10 +284,27 @@ def update_roster_info(
     )
 
 
-def update_player_photo_info(limit=None, offset=0, missing_only=True):
+def update_player_photo_info(
+        limit=None,
+        offset=0,
+        missing_only=True,
+        workers=1,
+        batch_size=20,
+        batch_sleep=3,
+        retry_failed=False,
+        max_batch_failed_ratio=0.5):
     from lq.service.roster import update_player_profile_photos
 
-    return update_player_profile_photos(limit=limit, offset=offset, missing_only=missing_only)
+    return update_player_profile_photos(
+        limit=limit,
+        offset=offset,
+        missing_only=missing_only,
+        workers=workers,
+        batch_size=batch_size,
+        batch_sleep=batch_sleep,
+        retry_failed=retry_failed,
+        max_batch_failed_ratio=max_batch_failed_ratio,
+    )
 
 
 def update_basic_information_maintenance(mark_legacy=True):
@@ -1112,6 +1129,35 @@ def main():
         action="store_true",
         help="For photo-info, refresh all player photos instead of only missing playerPic_url rows.",
     )
+    parser.add_argument(
+        "--photo-workers",
+        type=int,
+        default=1,
+        help="For photo-info, concurrent player detail page workers. Default: 1.",
+    )
+    parser.add_argument(
+        "--photo-batch-size",
+        type=int,
+        default=20,
+        help="For photo-info, submit this many player requests per batch. Default: 20.",
+    )
+    parser.add_argument(
+        "--photo-batch-sleep",
+        type=float,
+        default=3,
+        help="For photo-info, seconds to sleep between batches. Default: 3.",
+    )
+    parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="For photo-info, include previous failed photo requests. Default skips failed rows.",
+    )
+    parser.add_argument(
+        "--photo-max-batch-failed-ratio",
+        type=float,
+        default=0.5,
+        help="For photo-info, stop early when a batch failure ratio reaches this value. Default: 0.5.",
+    )
     parser.add_argument("--schedule-id", type=int, help="Titan basketball scheduleID for single-match enrichment tasks.")
     parser.add_argument("--force", action="store_true", help="For single-match enrichment tasks, ignore finished flags and collect again.")
     parser.add_argument("--start-time", help="For league data updates, only select matches at or after this matchTime.")
@@ -1194,6 +1240,11 @@ def main():
             limit=args.limit,
             offset=args.offset,
             missing_only=not args.all_photos,
+            workers=args.photo_workers,
+            batch_size=args.photo_batch_size,
+            batch_sleep=args.photo_batch_sleep,
+            retry_failed=args.retry_failed,
+            max_batch_failed_ratio=args.photo_max_batch_failed_ratio,
         )
     elif args.stage == "enrichment":
         if args.schedule_id is None:
@@ -1330,3 +1381,10 @@ if __name__ == '__main__':
         # update_odds()
         # update_details()
         update_enrichment_pending(league_id=2, season_count=3)
+
+
+        # from lq_update import update_basic_info, update_roster_info
+
+        # update_basic_info()
+        # update_roster_info(team_id=2)
+        # update_roster_info(missing_only=True, fetch_photos=False)

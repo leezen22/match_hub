@@ -1,6 +1,8 @@
 import hashlib
 import json
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from urllib.parse import urljoin
 
@@ -160,46 +162,129 @@ def update_all_team_rosters(limit=None, offset=0, missing_only=False, fetch_phot
     return {"total": total, "success": success, "failed": failed, "failures": failures}
 
 
-def update_player_profile_photos(limit=None, offset=0, missing_only=True):
+def update_player_profile_photos(
+        limit=None,
+        offset=0,
+        missing_only=True,
+        workers=1,
+        batch_size=20,
+        batch_sleep=3,
+        retry_failed=False,
+        max_batch_failed_ratio=0.5):
     migrate()
+    _backfill_existing_player_photo_status()
     where = "WHERE player_url IS NOT NULL AND player_url<>''"
     if missing_only:
-        where += " AND (playerPic_url IS NULL OR playerPic_url='')"
-    sql = (
-        "SELECT playerID,player_url FROM lq_player_profile {0} "
-        "ORDER BY id LIMIT {1}, {2}"
-    ).format(
-        where,
-        int(offset or 0),
-        int(limit or 200),
-    )
+        retry_failed_sql = " OR photo_collection_status='failed'" if retry_failed else ""
+        where += (
+            " AND (photo_collection_status IS NULL{0} "
+            "OR (photo_collection_status='success_with_data' AND (playerPic_url IS NULL OR playerPic_url='')))"
+        ).format(retry_failed_sql)
+    sql = "SELECT playerID,player_url FROM lq_player_profile {0} ORDER BY id".format(where)
+    if limit is not None:
+        sql += " LIMIT {0}, {1}".format(int(offset or 0), int(limit))
+    elif offset:
+        sql += " LIMIT {0}, 18446744073709551615".format(int(offset))
     rows = sql_util.select_dicts(sql)
     total = len(rows)
     success = 0
+    empty = 0
     failed = 0
-    for index, row in enumerate(rows, start=1):
-        player_id = int(row["playerID"])
-        player_url = row["player_url"]
-        try:
-            print("start basketball player photo update: {0}/{1}, player_id={2}".format(
-                index,
-                total,
-                player_id,
-            ), flush=True)
-            photo = _fetch_player_photo_from_url(player_url)
-            if photo.get("url"):
-                _update_player_photo(player_id, photo)
+    workers = max(1, int(workers or 1))
+    batch_size = max(1, int(batch_size or 1))
+    batch_sleep = max(0, float(batch_sleep or 0))
+    max_batch_failed_ratio = max(0, min(1, float(max_batch_failed_ratio)))
+    stopped_early = False
+
+    for start in range(0, total, batch_size):
+        batch = rows[start:start + batch_size]
+        batch_success = 0
+        batch_empty = 0
+        batch_failed = 0
+        if workers == 1:
+            statuses = [
+                _update_one_player_photo(row, start + offset_index, total)
+                for offset_index, row in enumerate(batch, start=1)
+            ]
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = [
+                    executor.submit(_update_one_player_photo, row, start + offset_index, total)
+                    for offset_index, row in enumerate(batch, start=1)
+                ]
+                statuses = [future.result() for future in as_completed(futures)]
+
+        for status in statuses:
+            if status == "success_with_data":
                 success += 1
+                batch_success += 1
+            elif status == "success_empty":
+                empty += 1
+                batch_empty += 1
             else:
                 failed += 1
-        except Exception:
-            failed += 1
-    print("basketball player photo update finished: total={0}, success={1}, failed={2}".format(
+                batch_failed += 1
+
+        if len(batch) >= 5 and batch_failed / float(len(batch)) >= max_batch_failed_ratio:
+            stopped_early = True
+            print("basketball player photo update stopped by failure circuit breaker: batch_start={0}, batch_size={1}, batch_failed={2}".format(
+                start + 1,
+                len(batch),
+                batch_failed,
+            ), flush=True)
+            break
+        if start + batch_size < total and batch_sleep:
+            time.sleep(batch_sleep)
+
+    print("basketball player photo update finished: total={0}, success_with_data={1}, success_empty={2}, failed={3}, stopped_early={4}".format(
         total,
         success,
+        empty,
         failed,
+        stopped_early,
     ), flush=True)
-    return {"total": total, "success": success, "failed": failed}
+    return {
+        "total": total,
+        "success_with_data": success,
+        "success_empty": empty,
+        "failed": failed,
+        "stopped_early": stopped_early,
+    }
+
+
+def _update_one_player_photo(row, index, total):
+    player_id = int(row["playerID"])
+    player_url = row["player_url"]
+    try:
+        print("start basketball player photo update: {0}/{1}, player_id={2}".format(
+            index,
+            total,
+            player_id,
+        ), flush=True)
+        photo = _fetch_player_photo_from_url(player_url)
+        if not photo.get("request_ok"):
+            raise ValueError("player photo page request failed")
+        if photo.get("url"):
+            _update_player_photo(player_id, photo, player_url, "success_with_data", 1)
+            return "success_with_data"
+        _update_player_photo_collection_status(player_id, player_url, "success_empty", 0)
+        return "success_empty"
+    except Exception:
+        _update_player_photo_collection_status(player_id, player_url, "failed", 0)
+        return "failed"
+
+
+def _backfill_existing_player_photo_status():
+    now = _now()
+    sql_util.sqlExecute(
+        "UPDATE lq_player_profile SET "
+        "photo_collection_status='success_with_data', "
+        "photo_has_data=1, "
+        "photo_updated_at='{0}', "
+        "photo_source_url_or_operation=COALESCE(player_url, source_url_or_operation) "
+        "WHERE photo_collection_status IS NULL "
+        "AND playerPic_url IS NOT NULL AND playerPic_url<>''".format(now)
+    )
 
 
 def fetch_team_detail_context(team_id, version=None):
@@ -322,19 +407,39 @@ def _fetch_player_photo_from_url(player_url):
     )
     photo_path = None
     photo_url = None
-    if response[0] == 1 and response[1]:
+    request_ok = response[0] == 1 and bool(response[1]) and not _looks_like_block_page(response[1])
+    if request_ok:
         match = re.search(r'<img\s+src="([^"]*/files/Player/[^"]+)"', response[1], flags=re.IGNORECASE)
         if match:
             photo_path = match.group(1).strip()
             photo_url = _asset_url(photo_path)
-    return {"path": photo_path, "url": photo_url}
+    return {"path": photo_path, "url": photo_url, "request_ok": request_ok}
 
 
-def _update_player_photo(player_id, photo):
+def _looks_like_block_page(content):
+    text = str(content or "")[:2000].lower()
+    markers = [
+        "captcha",
+        "forbidden",
+        "access denied",
+        "访问过于频繁",
+        "验证码",
+        "安全验证",
+    ]
+    return any(marker in text for marker in markers)
+
+
+def _update_player_photo(player_id, photo, player_url=None, collection_status="success_with_data", has_data=1):
+    now = _now()
     payload = {
         "playerPic": photo.get("path"),
         "playerPic_url": photo.get("url"),
-        "updated_at": _now(),
+        "photo_collection_status": collection_status,
+        "photo_has_data": has_data,
+        "photo_captured_at": now,
+        "photo_updated_at": now,
+        "photo_source_url_or_operation": player_url,
+        "updated_at": now,
     }
     sql_util.upData(
         "lq_player_profile",
@@ -343,8 +448,29 @@ def _update_player_photo(player_id, photo):
     )
     sql_util.upData(
         "lq_team_roster_current",
-        _update_payload(payload),
+        _update_payload({
+            "playerPic": photo.get("path"),
+            "playerPic_url": photo.get("url"),
+            "updated_at": now,
+        }),
         {"source_namespace": SOURCE_NAMESPACE, "playerID": int(player_id)},
+    )
+
+
+def _update_player_photo_collection_status(player_id, player_url, collection_status, has_data):
+    now = _now()
+    payload = {
+        "photo_collection_status": collection_status,
+        "photo_has_data": has_data,
+        "photo_captured_at": now,
+        "photo_updated_at": now,
+        "photo_source_url_or_operation": player_url,
+        "updated_at": now,
+    }
+    sql_util.upData(
+        "lq_player_profile",
+        _update_payload(payload),
+        {"source_namespace": SOURCE_NAMESPACE, "source_entity_id": str(int(player_id))},
     )
 
 

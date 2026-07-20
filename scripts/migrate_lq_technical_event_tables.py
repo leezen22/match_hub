@@ -76,6 +76,7 @@ def migrate():
           `sourceOperation` varchar(64) NULL,
           `captureID` varchar(36) NULL,
           `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time',
+          `recordedAt` datetime(6) NULL COMMENT 'UTC persistence write initiation time',
           `rawTech` longtext NULL,
           `createTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
           `updateTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -89,9 +90,10 @@ def migrate():
     _add_missing_columns(
         "lq_matchtechnic_raw",
         [
-            ("sourceOperation", "ADD COLUMN `sourceOperation` varchar(64) NULL AFTER `sourceUrl`"),
-            ("captureID", "ADD COLUMN `captureID` varchar(36) NULL AFTER `sourceOperation`"),
-            ("capturedAt", "ADD COLUMN `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time' AFTER `captureID`"),
+            ("sourceOperation", "ADD COLUMN `sourceOperation` varchar(64) NULL"),
+            ("captureID", "ADD COLUMN `captureID` varchar(36) NULL"),
+            ("capturedAt", "ADD COLUMN `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time'"),
+            ("recordedAt", "ADD COLUMN `recordedAt` datetime(6) NULL COMMENT 'UTC persistence write initiation time'"),
         ],
     )
 
@@ -145,7 +147,7 @@ def migrate():
     )
     _add_missing_columns(
         "lq_playertechnic",
-        [("rawCaptureID", "ADD COLUMN `rawCaptureID` varchar(36) NULL AFTER `rawData`")],
+        [("rawCaptureID", "ADD COLUMN `rawCaptureID` varchar(36) NULL")],
     )
 
     sql_util.sqlExecute(
@@ -228,7 +230,7 @@ def migrate():
             ("remainingPause", "ADD COLUMN `remainingPause` smallint(6) NULL AFTER `quarterFoul`"),
             ("twoPointScore", "ADD COLUMN `twoPointScore` smallint(6) NULL AFTER `remainingPause`"),
             ("threePointScore", "ADD COLUMN `threePointScore` smallint(6) NULL AFTER `twoPointScore`"),
-            ("rawCaptureID", "ADD COLUMN `rawCaptureID` varchar(36) NULL AFTER `rawData`"),
+            ("rawCaptureID", "ADD COLUMN `rawCaptureID` varchar(36) NULL"),
         ],
     )
     _migrate_teamtechnic_period_indexes()
@@ -255,6 +257,7 @@ def migrate():
           `sourceOperation` varchar(64) NULL,
           `captureID` varchar(36) NULL,
           `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time',
+          `recordedAt` datetime(6) NULL COMMENT 'UTC persistence write initiation time',
           `rawTextLive` longtext NULL,
           `createTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
           `updateTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -268,9 +271,10 @@ def migrate():
     _add_missing_columns(
         "lq_textlive_raw",
         [
-            ("sourceOperation", "ADD COLUMN `sourceOperation` varchar(64) NULL AFTER `sourceUrl`"),
-            ("captureID", "ADD COLUMN `captureID` varchar(36) NULL AFTER `sourceOperation`"),
-            ("capturedAt", "ADD COLUMN `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time' AFTER `captureID`"),
+            ("sourceOperation", "ADD COLUMN `sourceOperation` varchar(64) NULL"),
+            ("captureID", "ADD COLUMN `captureID` varchar(36) NULL"),
+            ("capturedAt", "ADD COLUMN `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time'"),
+            ("recordedAt", "ADD COLUMN `recordedAt` datetime(6) NULL COMMENT 'UTC persistence write initiation time'"),
         ],
     )
 
@@ -303,7 +307,7 @@ def migrate():
     )
     _add_missing_columns(
         "lq_textlive",
-        [("rawCaptureID", "ADD COLUMN `rawCaptureID` varchar(36) NULL AFTER `rawData`")],
+        [("rawCaptureID", "ADD COLUMN `rawCaptureID` varchar(36) NULL")],
     )
 
 

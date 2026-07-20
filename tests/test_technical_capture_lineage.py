@@ -69,3 +69,79 @@ def test_text_live_propagates_one_capture_to_all_events(monkeypatch):
 
 def test_failed_fetch_does_not_create_capture_metadata():
     assert _new_capture_metadata(False) == {"captureID": None, "capturedAt": None}
+
+
+def test_technical_persistence_keeps_raw_and_structured_capture_binding(monkeypatch):
+    capture_id = "technical-capture-1"
+    raw_writes = []
+    structured_writes = []
+    monkeypatch.setattr("lq.service.technical.sql_util.select", lambda sql: [(718457, 718457, 1, 2, "2025-26", None)])
+    monkeypatch.setattr(
+        Technical,
+        "technical_match",
+        staticmethod(lambda match, include_players: {
+            "requestOk": True,
+            "matchID": 718457,
+            "rawTech": "payload",
+            "sourceUrl": "https://example.test/technical.js",
+            "sourceOperation": "lq_technical_team",
+            "captureID": capture_id,
+            "capturedAt": "2026-07-20 01:02:03.123456",
+            "teams": [{"teamID": 1}, {"teamID": 2}],
+            "teamPeriodRows": [{"teamID": 1, "rawCaptureID": capture_id}],
+            "players": [{"playerID": 10, "rawCaptureID": capture_id}],
+        }),
+    )
+    monkeypatch.setattr(
+        "lq.service.technical.sql_util.replace_table_row",
+        lambda table, condition, data: raw_writes.append((table, data)) or True,
+    )
+    monkeypatch.setattr(
+        "lq.service.technical.sql_util.replace_table_rows",
+        lambda table, condition, rows: structured_writes.append((table, rows)) or True,
+    )
+    monkeypatch.setattr("lq.service.technical.sql_util.upData", lambda *args: None)
+
+    result = Technical.upMatchTechnical(718457)
+
+    assert result["request_ok"] is True
+    assert raw_writes[0][1]["captureID"] == capture_id
+    assert raw_writes[0][1]["sourceOperation"] == "lq_technical_team"
+    assert raw_writes[0][1]["recordedAt"] is not None
+    assert {rows[0]["rawCaptureID"] for _, rows in structured_writes} == {capture_id}
+
+
+def test_event_persistence_keeps_raw_and_structured_capture_binding(monkeypatch):
+    capture_id = "event-capture-1"
+    raw_writes = []
+    structured_writes = []
+    monkeypatch.setattr(
+        Technical,
+        "text_live",
+        staticmethod(lambda schedule_id: {
+            "requestOk": True,
+            "matchID": 718457,
+            "rawTextLive": "payload",
+            "sourceUrl": "https://example.test/text-live.js",
+            "sourceOperation": "lq_text_live",
+            "captureID": capture_id,
+            "capturedAt": "2026-07-20 01:02:03.123456",
+            "events": [{"liveID": 1, "rawCaptureID": capture_id}],
+        }),
+    )
+    monkeypatch.setattr(
+        "lq.service.technical.sql_util.replace_table_row",
+        lambda table, condition, data: raw_writes.append((table, data)) or True,
+    )
+    monkeypatch.setattr(
+        "lq.service.technical.sql_util.replace_table_rows",
+        lambda table, condition, rows: structured_writes.append((table, rows)) or True,
+    )
+
+    result = Technical.upMatchTextLive(718457)
+
+    assert result["request_ok"] is True
+    assert raw_writes[0][1]["captureID"] == capture_id
+    assert raw_writes[0][1]["sourceOperation"] == "lq_text_live"
+    assert raw_writes[0][1]["recordedAt"] is not None
+    assert structured_writes[0][1][0]["rawCaptureID"] == capture_id

@@ -311,6 +311,11 @@ def _ensure_extra_columns():
         "draftInfo": "ADD COLUMN `draftInfo` varchar(255) CHARACTER SET utf8 NULL",
         "playerPic_url": "ADD COLUMN `playerPic_url` varchar(255) CHARACTER SET utf8 NULL",
         "player_url": "ADD COLUMN `player_url` varchar(255) CHARACTER SET utf8 NULL",
+        "photo_collection_status": "ADD COLUMN `photo_collection_status` varchar(32) CHARACTER SET utf8 NULL",
+        "photo_has_data": "ADD COLUMN `photo_has_data` tinyint(4) NULL",
+        "photo_captured_at": "ADD COLUMN `photo_captured_at` datetime NULL",
+        "photo_updated_at": "ADD COLUMN `photo_updated_at` datetime NULL",
+        "photo_source_url_or_operation": "ADD COLUMN `photo_source_url_or_operation` varchar(255) CHARACTER SET utf8 NULL",
         "rawData": "ADD COLUMN `rawData` text CHARACTER SET utf8 NULL",
     })
     extra = {
