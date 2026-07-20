@@ -1,5 +1,6 @@
 import os
 import traceback
+from datetime import datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -12,7 +13,92 @@ from utils import sql_util, js2pyUtil, fileUtil
 from utils.webUtil import WebUtil
 
 
+SOURCE_NAMESPACE = "titan_basketball"
+
+LEAGUE_METADATA_COLUMNS = {
+    "logo": "ADD COLUMN `logo` varchar(255) CHARACTER SET utf8 NULL",
+    "logo_url": "ADD COLUMN `logo_url` varchar(255) CHARACTER SET utf8 NULL",
+    "source_namespace": "ADD COLUMN `source_namespace` varchar(64) CHARACTER SET utf8 NULL",
+    "source_entity_id": "ADD COLUMN `source_entity_id` varchar(64) CHARACTER SET utf8 NULL",
+    "captured_at": "ADD COLUMN `captured_at` datetime NULL",
+    "recorded_at": "ADD COLUMN `recorded_at` datetime NULL",
+    "updated_at": "ADD COLUMN `updated_at` datetime NULL",
+    "source_state_valid_at": "ADD COLUMN `source_state_valid_at` datetime NULL",
+    "source_url_or_operation": "ADD COLUMN `source_url_or_operation` varchar(255) CHARACTER SET utf8 NULL",
+    "collection_status": "ADD COLUMN `collection_status` varchar(32) CHARACTER SET utf8 NULL",
+    "has_data": "ADD COLUMN `has_data` tinyint(4) NULL",
+}
+
+
 class LQleague(object):
+    @staticmethod
+    def updateTeamInfo(league_id, version=None):
+        from lq.service.team import update_team_info
+
+        return update_team_info(league_id, version=version)
+
+    @staticmethod
+    def updateLeagueDetailInfo(league_id, version=None):
+        from lq.service.team import update_league_info_from_team_info
+
+        return update_league_info_from_team_info(league_id, version=version)
+
+    @staticmethod
+    def updateLeagueInfo(league_id=None, version=None):
+        ensure_basic_information_schema()
+        leagues = LQleague.getLeaguesOfWebsite()
+        captured_at = _now()
+        recorded_at = _now()
+        inserted = 0
+        updated = 0
+        for league in leagues:
+            row = LQleague._league_row(league, captured_at, recorded_at)
+            result = sql_util.select_dicts(
+                "SELECT leagueID,name_en FROM lq_league WHERE leagueID={0}".format(int(row["leagueID"]))
+            )
+            if len(result) > 0:
+                if _should_preserve_existing_name_en(result[0].get("name_en"), row.get("name_en"), row.get("name_sh")):
+                    row.pop("name_en", None)
+                sql_util.upData("lq_league", _update_payload(row), {"leagueID": row["leagueID"]})
+                updated += 1
+            else:
+                sql_util.insertData("lq_league", row)
+                inserted += 1
+        print("basketball league info update finished: leagues={0}, inserted={1}, updated={2}".format(
+            len(leagues),
+            inserted,
+            updated,
+        ))
+        result = {"leagues": len(leagues), "inserted": inserted, "updated": updated}
+        if league_id is not None:
+            result["league_detail"] = LQleague.updateLeagueDetailInfo(league_id, version=version)
+        return result
+
+    @staticmethod
+    def _league_row(league, captured_at, recorded_at):
+        league_id = int(league["league_id"])
+        return {
+            "leagueID": league_id,
+            "name_sh": _empty_to_none(league.get("league_name")),
+            "name_cn": _empty_to_none(league.get("name_zh_hans") or league.get("league_name")),
+            "name_tw": _empty_to_none(league.get("name_zh_hant")),
+            "name_en": _empty_to_none(league.get("name_en")),
+            "name_twsh": _empty_to_none(league.get("name_zh_hant")),
+            "name_ensh": _empty_to_none(league.get("name_en")),
+            "country": _empty_to_none(league.get("left_country_name_zh_hans") or league.get("country_name")),
+            "countryID": _parse_country_id(league.get("country_id")),
+            "leagueKind": int(league["kind_type"]),
+            "source_namespace": SOURCE_NAMESPACE,
+            "source_entity_id": str(league_id),
+            "captured_at": captured_at,
+            "recorded_at": recorded_at,
+            "updated_at": recorded_at,
+            "source_state_valid_at": None,
+            "source_url_or_operation": _empty_to_none(league.get("source")),
+            "collection_status": "success",
+            "has_data": 1,
+        }
+
     @staticmethod
     def getSchejsPending(sclass):
         pendinglist = []
@@ -369,5 +455,58 @@ class LQleague(object):
     @staticmethod
     def getLeaguesOfWebsite():
         crawler = LeagueCrawler()
-        leagues = crawler.get_leagues_web()
+        leagues = crawler.get_league_metadata_web()
         return leagues
+
+
+def _empty_to_none(value):
+    value = str(value or "").strip()
+    return value if value else None
+
+
+def _parse_country_id(value):
+    text = str(value or "")
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return int(digits) if digits else None
+
+
+def _should_preserve_existing_name_en(existing, fetched, short_name):
+    existing = str(existing or "").strip()
+    fetched = str(fetched or "").strip()
+    short_name = str(short_name or "").strip()
+    if not existing or not fetched:
+        return False
+    if fetched.lower() == short_name.lower() and len(existing) > len(fetched):
+        return True
+    return False
+
+
+def ensure_basic_information_schema():
+    _ensure_lq_league_metadata_schema()
+    from scripts.migrate_lq_basic_information_tables import migrate
+
+    migrate()
+
+
+def _ensure_lq_league_metadata_schema():
+    columns = set(_columns("lq_league"))
+    for column, ddl in LEAGUE_METADATA_COLUMNS.items():
+        if column not in columns:
+            print("add lq_league.{0}".format(column))
+            sql_util.sqlExecute("ALTER TABLE `lq_league` {0}".format(ddl))
+
+
+def _columns(table):
+    return [row[0] for row in sql_util.select("SHOW COLUMNS FROM `{0}`".format(table))]
+
+
+def _update_payload(row):
+    return {
+        key: value
+        for key, value in row.items()
+        if value is not None and key not in ("recorded_at",)
+    }
+
+
+def _now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")

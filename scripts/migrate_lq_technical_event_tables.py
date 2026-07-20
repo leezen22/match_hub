@@ -73,14 +73,26 @@ def migrate():
           `scheduleID` int(11) NOT NULL,
           `matchID` int(11) NULL,
           `sourceUrl` varchar(255) NULL,
+          `sourceOperation` varchar(64) NULL,
+          `captureID` varchar(36) NULL,
+          `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time',
           `rawTech` longtext NULL,
           `createTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
           `updateTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (`ID`),
           UNIQUE KEY `uk_lq_matchtechnic_raw_schedule` (`scheduleID`),
-          KEY `idx_lq_matchtechnic_raw_match` (`matchID`)
+          KEY `idx_lq_matchtechnic_raw_match` (`matchID`),
+          KEY `idx_lq_matchtechnic_raw_capture` (`captureID`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
+    )
+    _add_missing_columns(
+        "lq_matchtechnic_raw",
+        [
+            ("sourceOperation", "ADD COLUMN `sourceOperation` varchar(64) NULL AFTER `sourceUrl`"),
+            ("captureID", "ADD COLUMN `captureID` varchar(36) NULL AFTER `sourceOperation`"),
+            ("capturedAt", "ADD COLUMN `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time' AFTER `captureID`"),
+        ],
     )
 
     sql_util.sqlExecute(
@@ -120,14 +132,20 @@ def migrate():
           `shirtNumber` varchar(20) NULL,
           `playerPic` varchar(255) NULL,
           `rawData` text NULL,
+          `rawCaptureID` varchar(36) NULL,
           `createTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
           `updateTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (`ID`),
           UNIQUE KEY `uk_lq_playertechnic_match_player` (`scheduleID`,`teamID`,`playerID`),
           KEY `idx_lq_playertechnic_match` (`matchID`),
-          KEY `idx_lq_playertechnic_player` (`playerID`)
+          KEY `idx_lq_playertechnic_player` (`playerID`),
+          KEY `idx_lq_playertechnic_capture` (`rawCaptureID`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
+    )
+    _add_missing_columns(
+        "lq_playertechnic",
+        [("rawCaptureID", "ADD COLUMN `rawCaptureID` varchar(36) NULL AFTER `rawData`")],
     )
 
     sql_util.sqlExecute(
@@ -167,12 +185,14 @@ def migrate():
           `twoPointScore` smallint(6) NULL,
           `threePointScore` smallint(6) NULL,
           `rawData` varchar(255) NULL,
+          `rawCaptureID` varchar(36) NULL,
           `createTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
           `updateTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (`ID`),
           UNIQUE KEY `uk_lq_teamtechnic_period_team` (`scheduleID`,`period`,`teamID`),
           KEY `idx_lq_teamtechnic_period_match` (`matchID`),
-          KEY `idx_lq_teamtechnic_period_schedule` (`scheduleID`,`period`)
+          KEY `idx_lq_teamtechnic_period_schedule` (`scheduleID`,`period`),
+          KEY `idx_lq_teamtechnic_period_capture` (`rawCaptureID`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
     )
@@ -208,6 +228,7 @@ def migrate():
             ("remainingPause", "ADD COLUMN `remainingPause` smallint(6) NULL AFTER `quarterFoul`"),
             ("twoPointScore", "ADD COLUMN `twoPointScore` smallint(6) NULL AFTER `remainingPause`"),
             ("threePointScore", "ADD COLUMN `threePointScore` smallint(6) NULL AFTER `twoPointScore`"),
+            ("rawCaptureID", "ADD COLUMN `rawCaptureID` varchar(36) NULL AFTER `rawData`"),
         ],
     )
     _migrate_teamtechnic_period_indexes()
@@ -231,14 +252,26 @@ def migrate():
           `scheduleID` int(11) NOT NULL,
           `matchID` int(11) NULL,
           `sourceUrl` varchar(255) NULL,
+          `sourceOperation` varchar(64) NULL,
+          `captureID` varchar(36) NULL,
+          `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time',
           `rawTextLive` longtext NULL,
           `createTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
           `updateTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (`ID`),
           UNIQUE KEY `uk_lq_textlive_raw_schedule` (`scheduleID`),
-          KEY `idx_lq_textlive_raw_match` (`matchID`)
+          KEY `idx_lq_textlive_raw_match` (`matchID`),
+          KEY `idx_lq_textlive_raw_capture` (`captureID`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
+    )
+    _add_missing_columns(
+        "lq_textlive_raw",
+        [
+            ("sourceOperation", "ADD COLUMN `sourceOperation` varchar(64) NULL AFTER `sourceUrl`"),
+            ("captureID", "ADD COLUMN `captureID` varchar(36) NULL AFTER `sourceOperation`"),
+            ("capturedAt", "ADD COLUMN `capturedAt` datetime(6) NULL COMMENT 'UTC source fetch completion time' AFTER `captureID`"),
+        ],
     )
 
     sql_util.sqlExecute(
@@ -257,14 +290,20 @@ def migrate():
           `eventIndex` int(11) NULL,
           `sequence` int(11) NULL,
           `rawData` text NULL,
+          `rawCaptureID` varchar(36) NULL,
           `createTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
           `updateTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (`ID`),
           UNIQUE KEY `uk_lq_textlive_schedule_live` (`scheduleID`,`liveID`),
           KEY `idx_lq_textlive_match` (`matchID`),
-          KEY `idx_lq_textlive_schedule_period` (`scheduleID`,`period`,`eventIndex`)
+          KEY `idx_lq_textlive_schedule_period` (`scheduleID`,`period`,`eventIndex`),
+          KEY `idx_lq_textlive_capture` (`rawCaptureID`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
+    )
+    _add_missing_columns(
+        "lq_textlive",
+        [("rawCaptureID", "ADD COLUMN `rawCaptureID` varchar(36) NULL AFTER `rawData`")],
     )
 
 

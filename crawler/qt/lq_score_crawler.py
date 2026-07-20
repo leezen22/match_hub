@@ -77,11 +77,10 @@ def _parse_quarter_scores(home_tds, away_tds, match_dict):
     ]
 
     for quarter, index in quarter_mapping:
-        cell_index = index + 1
-        if home_tds[cell_index].text:
-            match_dict[f'homeScore{quarter}'] = home_tds[cell_index].text
-        if away_tds[cell_index].text:
-            match_dict[f'awayScore{quarter}'] = away_tds[cell_index].text
+        if home_tds[index].text:
+            match_dict[f'homeScore{quarter}'] = home_tds[index].text
+        if away_tds[index].text:
+            match_dict[f'awayScore{quarter}'] = away_tds[index].text
 
 
 def _parse_overtime_scores(home_tds, away_tds, td_count, add_times, match_dict):
@@ -92,8 +91,8 @@ def _parse_overtime_scores(home_tds, away_tds, td_count, add_times, match_dict):
             break
 
         add_time = add_times[i]
-        home_value = home_tds[5 + i].text
-        away_value = away_tds[5 + i].text
+        home_value = home_tds[6 + i].text
+        away_value = away_tds[6 + i].text
 
         if home_value and home_value != '-':
             match_dict[f'home{add_time}'] = home_value

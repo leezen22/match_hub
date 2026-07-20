@@ -129,7 +129,8 @@ def up_match_data(scheduleIdArr):
     # time2 = "'" + (now + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S") + "'"
     # and leagueID in (1, 2, 5, 7, 14, 15, 19, 25, 20, 28, 22)
     for matchId in scheduleIdArr:
-        schedulesql = "SELECT scheduleID, leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
+        schedulesql = "SELECT scheduleID, leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f," \
+                      "homeScore1,homeScore2,homeScore3,homeScore4,awayScore1,awayScore2,awayScore3,awayScore4 FROM `lq_schedule`" \
                       " WHERE matchState>=-1 and scheduleId = {0} order by matchTime ASC ".format(matchId)
         asiansql = "SELECT scheduleID, leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
                    " WHERE asianodds_f in(0,1) and matchState>=-1 and scheduleId = {0} order by matchTime ASC ".format(matchId)
@@ -139,7 +140,11 @@ def up_match_data(scheduleIdArr):
         scheduleMatchList = sql_util.select_rows(schedulesql)
         asianMatchList = sql_util.select_rows(asiansql)
         print(scheduleMatchList)
-        if len(scheduleMatchList) > 0 and scheduleMatchList[0][4] != 2 and _should_update_part_score(scheduleMatchList[0][2], scheduleMatchList[0][3]):
+        if len(scheduleMatchList) > 0 and _should_update_part_score(
+                scheduleMatchList[0][2],
+                scheduleMatchList[0][3],
+                scheduleMatchList[0][4],
+                scheduleMatchList[0][7:15]):
             up_score_batch([matchId])
         else:
             print("小节比分未到更新时间或已完成，跳过: " + str(matchId))
@@ -164,15 +169,131 @@ def up_match_data(scheduleIdArr):
             print("技术统计/事件未完场，跳过: " + str(matchId))
 
 
-def _should_update_part_score(match_state, match_time):
+def _should_update_part_score(match_state, match_time, partscore_f=None, score_parts=None):
     if match_time is None or match_time > datetime.now():
         return False
-    return int(match_state) != -2
+    if int(match_state) == -2:
+        return False
+    if partscore_f != 2:
+        return True
+    return int(match_state) == -1 and _has_incomplete_part_scores(score_parts)
+
+
+def _has_incomplete_part_scores(score_parts):
+    return score_parts is not None and any(value is None for value in score_parts)
 
 def update_schedule_js():
     from lq.service.schedulejs import upScheJs
 
     upScheJs()
+
+
+def update_team_info(league_id, version=None):
+    from lq.service.league import LQleague
+
+    return LQleague.updateTeamInfo(league_id, version=version)
+
+
+def update_league_info(league_id=None, version=None):
+    from lq.service.league import LQleague
+
+    return LQleague.updateLeagueInfo(league_id=league_id, version=version)
+
+
+def update_basic_info(
+        league_id=None,
+        version=None,
+        limit=None,
+        offset=0,
+        update_roster=True,
+        roster_missing_only=False,
+        fetch_photos=False,
+        mark_legacy=True):
+    result = {"league_info": update_league_info(league_id=league_id, version=version)}
+    if league_id is not None:
+        result["team_info"] = update_team_info(league_id, version=version)
+    else:
+        result["team_info"] = update_all_team_info(limit=limit)
+    if update_roster:
+        result["roster_info"] = update_roster_info(
+            league_id=league_id,
+            limit=limit,
+            offset=offset,
+            missing_only=roster_missing_only,
+            fetch_photos=fetch_photos,
+        )
+    result["maintenance"] = update_basic_information_maintenance(mark_legacy=mark_legacy)
+    print("basketball basic information update finished: {0}".format(result))
+    return result
+
+
+def update_all_team_info(limit=None):
+    from lq.service.league import LQleague
+    from lq.service.team import mark_team_info_collection_failed
+
+    leagues = LQleague.getLeaguesOfWebsite()
+    if limit is not None:
+        leagues = leagues[:int(limit)]
+
+    total = len(leagues)
+    success = 0
+    failed = 0
+    failures = []
+    for index, league in enumerate(leagues, start=1):
+        league_id = int(league["league_id"])
+        try:
+            print("start basketball team info update: {0}/{1}, league_id={2}, league_name={3}".format(
+                index,
+                total,
+                league_id,
+                league.get("league_name"),
+            ))
+            update_team_info(league_id)
+            success += 1
+        except Exception as exc:
+            failed += 1
+            failures.append({"league_id": league_id, "league_name": league.get("league_name"), "error": str(exc)})
+            mark_team_info_collection_failed(league_id, str(exc))
+
+    print("basketball all team info update finished: total={0}, success={1}, failed={2}".format(
+        total,
+        success,
+        failed,
+    ))
+    return {"total": total, "success": success, "failed": failed, "failures": failures}
+
+
+def update_roster_info(
+        team_id=None,
+        version=None,
+        limit=None,
+        offset=0,
+        missing_only=False,
+        fetch_photos=True,
+        league_id=None):
+    from lq.service.roster import update_all_team_rosters, update_team_roster
+
+    if team_id is not None:
+        return update_team_roster(team_id, version=version, fetch_photos=fetch_photos)
+    return update_all_team_rosters(
+        limit=limit,
+        offset=offset,
+        missing_only=missing_only,
+        fetch_photos=fetch_photos,
+        league_id=league_id,
+    )
+
+
+def update_player_photo_info(limit=None, offset=0, missing_only=True):
+    from lq.service.roster import update_player_profile_photos
+
+    return update_player_profile_photos(limit=limit, offset=offset, missing_only=missing_only)
+
+
+def update_basic_information_maintenance(mark_legacy=True):
+    from lq.service.team import maintain_basic_information_records
+
+    return maintain_basic_information_records(mark_legacy=mark_legacy)
 
 
 def update_schedule():
@@ -921,6 +1042,11 @@ def main():
             "details",
             "technical",
             "text-live",
+            "league-info",
+            "team-info",
+            "basic-info",
+            "roster-info",
+            "photo-info",
             "enrichment",
             "enrichment-pending",
             "schedule-local",
@@ -934,6 +1060,8 @@ def main():
     )
     parser.add_argument("request_text", nargs="*", help="Natural-language request for the request stage.")
     parser.add_argument("--league-id", type=int, help="Titan basketball league/SclassID.")
+    parser.add_argument("--team-id", type=int, help="Titan basketball TeamID.")
+    parser.add_argument("--version", help="Titan team-info js version, for example 2026072009.")
     parser.add_argument("--season", help="Season, for example 2026 or 2025-2026.")
     parser.add_argument(
         "--kind-type",
@@ -953,6 +1081,37 @@ def main():
         help="For league-season-data, include finished rows even when local update flags are closed.",
     )
     parser.add_argument("--limit", type=int, help="Limit selected schedule ids for league-season-data.")
+    parser.add_argument("--offset", type=int, default=0, help="For roster-info/basic-info batch updates, skip this many selected rows.")
+    parser.add_argument(
+        "--missing-only",
+        action="store_true",
+        help="For roster-info, only update teams without active player-team relation rows.",
+    )
+    parser.add_argument(
+        "--skip-photo",
+        action="store_true",
+        help="For roster-info, skip player detail page photo fetch and only persist core profile/roster/relation data.",
+    )
+    parser.add_argument(
+        "--skip-roster",
+        action="store_true",
+        help="For basic-info, skip team roster/player profile update after league/team update.",
+    )
+    parser.add_argument(
+        "--with-photos",
+        action="store_true",
+        help="For basic-info, fetch player detail pages to fill player photos.",
+    )
+    parser.add_argument(
+        "--skip-legacy",
+        action="store_true",
+        help="For basic-info, do not mark pre-existing null-status league/team rows as legacy.",
+    )
+    parser.add_argument(
+        "--all-photos",
+        action="store_true",
+        help="For photo-info, refresh all player photos instead of only missing playerPic_url rows.",
+    )
     parser.add_argument("--schedule-id", type=int, help="Titan basketball scheduleID for single-match enrichment tasks.")
     parser.add_argument("--force", action="store_true", help="For single-match enrichment tasks, ignore finished flags and collect again.")
     parser.add_argument("--start-time", help="For league data updates, only select matches at or after this matchTime.")
@@ -1004,6 +1163,38 @@ def main():
         if args.schedule_id is None:
             parser.error("text-live requires --schedule-id")
         update_match_text_live(args.schedule_id, force=args.force)
+    elif args.stage == "league-info":
+        update_league_info(league_id=args.league_id, version=args.version)
+    elif args.stage == "team-info":
+        if args.league_id is None:
+            parser.error("team-info requires --league-id")
+        update_team_info(args.league_id, version=args.version)
+    elif args.stage == "basic-info":
+        update_basic_info(
+            args.league_id,
+            version=args.version,
+            limit=args.limit,
+            offset=args.offset,
+            update_roster=not args.skip_roster,
+            roster_missing_only=args.missing_only,
+            fetch_photos=args.with_photos,
+            mark_legacy=not args.skip_legacy,
+        )
+    elif args.stage == "roster-info":
+        update_roster_info(
+            team_id=args.team_id,
+            version=args.version,
+            limit=args.limit,
+            offset=args.offset,
+            missing_only=args.missing_only,
+            fetch_photos=not args.skip_photo,
+        )
+    elif args.stage == "photo-info":
+        update_player_photo_info(
+            limit=args.limit,
+            offset=args.offset,
+            missing_only=not args.all_photos,
+        )
     elif args.stage == "enrichment":
         if args.schedule_id is None:
             parser.error("enrichment requires --schedule-id")
@@ -1110,6 +1301,28 @@ if __name__ == '__main__':
     else:
         from lq.service.schedulejs import upScheJsLocal
 
+        # Daily update path:
+        #   update_schedule_js()  # Fetch Titan schedule JS files.
+        #   update_schedule()     # Parse schedule JS files into lq_schedule.
+        #   update_score()        # Update live/final scores and fill missing period scores.
+        #
+        # Basic information task examples:
+        #   update_basic_info()  # league + team + roster/player profile + legacy/status summary, photos skipped.
+        #   update_basic_info(league_id=1)
+        #   update_basic_info(update_roster=False)
+        #   update_basic_info(fetch_photos=True)
+        #   update_roster_info(team_id=2)
+        #   update_roster_info(missing_only=True, fetch_photos=False)
+        #
+        # CLI examples:
+        #   venv/bin/python lq_update.py basic-info
+        #   venv/bin/python lq_update.py basic-info --skip-roster
+        #   venv/bin/python lq_update.py basic-info --with-photos
+        #   venv/bin/python lq_update.py league-info
+        #   venv/bin/python lq_update.py team-info --league-id 1
+        #   venv/bin/python lq_update.py roster-info --team-id 2
+        #   venv/bin/python lq_update.py roster-info --missing-only --skip-photo
+        #   venv/bin/python lq_update.py photo-info
         # update_schedule_js()
         # upScheJsLocal()
         # update_schedule()

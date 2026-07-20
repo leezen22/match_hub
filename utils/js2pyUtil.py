@@ -14,6 +14,21 @@ from utils.webUtil import WebUtil
 
 HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "</html>")
 JS2PY_EXEC_LOCK = threading.RLock()
+JS_START_MARKERS = ("var ", "const ", "let ", "function ")
+
+
+def _normalize_js_content(content: str) -> str:
+    text = (content or "").lstrip("\ufeff")
+    # Some Titan JS responses are UTF-8 with BOM, but requests may decode them
+    # as a legacy charset and leave mojibake before the first statement.
+    for marker in JS_START_MARKERS:
+        index = text.find(marker)
+        if 0 <= index <= 8:
+            return text[index:]
+    index = text.find("ar ")
+    if 0 <= index <= 8:
+        return "v" + text[index:]
+    return text
 
 
 def _split_top_level_statements(content: str):
@@ -88,7 +103,7 @@ def is_probable_js(content: str, required_names: Optional[Iterable[str]] = None)
 
 def parse_js_content(content: str, source: str, required_names: Optional[Iterable[str]] = None):
     result = [0, ""]
-    content = (content or "").lstrip("\ufeff")
+    content = _normalize_js_content(content)
     if not content:
         logLine(common_config.js2pyweb_e, ["EMPTY_JS_CONTENT", source])
         return result

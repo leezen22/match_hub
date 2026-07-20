@@ -1,4 +1,6 @@
 import traceback
+import uuid
+from datetime import datetime, timezone
 from config import lqconfig_qt
 from utils import sql_util
 from utils.js2pyUtil import logLine
@@ -39,6 +41,16 @@ class Technical(object):
                                  "where matchState=-1 and teamTech=0 order by matchTime ASC")
         for match in matchs:
             result = Technical.technical_match(match, include_players=False)
+            if result.get('rawTech') != '':
+                sql_util.replace_table_row('lq_matchtechnic_raw', {'scheduleID': match[0]}, {
+                    'scheduleID': match[0],
+                    'matchID': result['matchID'],
+                    'rawTech': result['rawTech'],
+                    'sourceUrl': result['sourceUrl'],
+                    'sourceOperation': result['sourceOperation'],
+                    'captureID': result['captureID'],
+                    'capturedAt': result['capturedAt'],
+                })
             if len(result['teamPeriodRows']) > 0:
                 sql_util.delData('lq_teamtechnic_period', {'scheduleID': match[0]})
                 sql_util.insertDatas('lq_teamtechnic_period', result['teamPeriodRows'])
@@ -62,6 +74,9 @@ class Technical(object):
                 'matchID': result['matchID'],
                 'rawTech': result['rawTech'],
                 'sourceUrl': result['sourceUrl'],
+                'sourceOperation': result['sourceOperation'],
+                'captureID': result['captureID'],
+                'capturedAt': result['capturedAt'],
             }) and persist_ok
         if len(result['teamPeriodRows']) > 0:
             if sql_util.replace_table_rows('lq_teamtechnic_period', {'scheduleID': scheduleID}, result['teamPeriodRows']):
@@ -88,6 +103,9 @@ class Technical(object):
                 'matchID': text_live['matchID'],
                 'rawTextLive': text_live['rawTextLive'],
                 'sourceUrl': text_live['sourceUrl'],
+                'sourceOperation': text_live['sourceOperation'],
+                'captureID': text_live['captureID'],
+                'capturedAt': text_live['capturedAt'],
             }) and persist_ok
         if len(rows) > 0:
             if not sql_util.replace_table_rows('lq_textlive', {'scheduleID': scheduleID}, rows):
@@ -97,13 +115,19 @@ class Technical(object):
 
     @staticmethod
     def technical_match(matchdata, include_players=True):
-        result = {'teams': [], 'players': [], 'teamPeriodRows': [], 'rawTech': '', 'sourceUrl': '', 'requestOk': False}
+        result = {
+            'teams': [], 'players': [], 'teamPeriodRows': [], 'rawTech': '', 'sourceUrl': '',
+            'sourceOperation': 'lq_technical_team', 'captureID': None, 'capturedAt': None,
+            'requestOk': False,
+        }
         result['matchID'] = matchdata[1]
         schedule_id = matchdata[0]
         source_url, content, request_ok = Technical._fetch_technical_js(schedule_id)
         result['rawTech'] = content
         result['sourceUrl'] = source_url
         result['requestOk'] = request_ok
+        capture = _new_capture_metadata(request_ok)
+        result.update(capture)
         if content == '':
             return result
 
@@ -129,6 +153,8 @@ class Technical(object):
             result['teamPeriodRows'] = Technical._merge_supplemental_team_tech(result['teamPeriodRows'], tech_data[3])
         if len(result['teamPeriodRows']) == 0 and len(result['teams']) == 2:
             result['teamPeriodRows'] = Technical._team_rows_to_period_rows(result['teams'])
+        for row in result['teamPeriodRows'] + result['players']:
+            row['rawCaptureID'] = result['captureID']
         return result
 
     @staticmethod
@@ -387,11 +413,21 @@ class Technical(object):
             "SELECT scheduleID,matchID FROM `lq_schedule` where scheduleID={0}".format(int(scheduleID))
         )
         if len(matchs) == 0:
-            return {'state': 0, 'requestOk': False, 'events': [], 'rawTextLive': '', 'sourceUrl': '', 'matchID': None}
+            return {
+                'state': 0, 'requestOk': False, 'events': [], 'rawTextLive': '', 'sourceUrl': '',
+                'sourceOperation': 'lq_text_live', 'captureID': None, 'capturedAt': None, 'matchID': None,
+            }
         match_id = matchs[0][1]
         url, content, request_ok = Technical._fetch_txt_live_js(scheduleID)
         events = Technical._parse_txt_live_events(scheduleID, match_id, content)
-        return {'state': 1 if request_ok else 0, 'requestOk': request_ok, 'events': events, 'rawTextLive': content, 'sourceUrl': url, 'matchID': match_id}
+        capture = _new_capture_metadata(request_ok)
+        for row in events:
+            row['rawCaptureID'] = capture['captureID']
+        return {
+            'state': 1 if request_ok else 0, 'requestOk': request_ok, 'events': events,
+            'rawTextLive': content, 'sourceUrl': url, 'sourceOperation': 'lq_text_live',
+            'captureID': capture['captureID'], 'capturedAt': capture['capturedAt'], 'matchID': match_id,
+        }
 
     @staticmethod
     def _fetch_txt_live_js(matchid):
@@ -454,3 +490,13 @@ def _sum_optional_int(left, right):
     if left_value is None and right_value is None:
         return None
     return (left_value or 0) + (right_value or 0)
+
+
+def _new_capture_metadata(request_ok):
+    if not request_ok:
+        return {'captureID': None, 'capturedAt': None}
+    return {
+        'captureID': str(uuid.uuid4()),
+        # MySQL DATETIME is timezone-naive; this column is explicitly defined as UTC.
+        'capturedAt': datetime.now(timezone.utc).replace(tzinfo=None),
+    }

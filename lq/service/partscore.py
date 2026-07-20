@@ -20,7 +20,13 @@ def upPartscore():
     time1 = "'" + (now + timedelta(days=-60)).strftime("%Y-%m-%d %H:%M:%S") + "'"
     # time1 = "'2008-01-01 00:00'"
     # 采集任务未完成，且比赛状态完场或进行中，且比赛日期小于当前时间
-    sql = "SELECT scheduleID, leagueId, matchState,matchTime FROM `lq_schedule` WHERE matchState >= -1 and partscore_f in(0,1)" + \
+    incomplete_finished_score = (
+        "matchState=-1 and partscore_f=2 and "
+        "(homeScore1 is null or homeScore2 is null or homeScore3 is null or homeScore4 is null "
+        "or awayScore1 is null or awayScore2 is null or awayScore3 is null or awayScore4 is null)"
+    )
+    sql = "SELECT scheduleID, leagueId, matchState,matchTime FROM `lq_schedule` WHERE matchState >= -1 " + \
+          "and (partscore_f in(0,1) or (" + incomplete_finished_score + "))" + \
           "AND matchTime <=" + time0 + " AND matchtime >= " + time1 + " ORDER BY matchTime DESC"
     # print(sql)
     matchs = sql_util.select(sql)
@@ -56,7 +62,6 @@ def upPartScore(leagueID, seasons):
         partdDct = get_part_score(matchID)
         sql_util.upData('lq_schedule', partdDct, {'scheduleID': matchID})
     print("小节比分更新成功；" + "联赛：" + str(leagueID) + "赛季：" + ",".join(seasons))
-
 
 
 

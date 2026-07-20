@@ -73,8 +73,57 @@ def upScheduleByFile(file, flag, updateTime_local):
         if match['matchState'] not in [-1, -4]:
             isfinished = 1
 
+    if kindType == 'l' and matchkind == '2':
+        _close_removed_playoff_placeholders(matchlist)
+
     if isfinished == 2 and matchkind == '1':
         tag_mainten.upScheTaskByFlag(file, isfinished)
     if len(matchlist) > 0:
         isUpdated = True
     return isUpdated
+
+
+def _close_removed_playoff_placeholders(matchlist):
+    playoff_groups = {}
+    for match in matchlist:
+        playoffs_id = match.get('playoffsID')
+        if playoffs_id is None:
+            continue
+        key = (match.get('leagueID'), match.get('matchSeason'), playoffs_id)
+        playoff_groups.setdefault(key, set()).add(int(match['scheduleID']))
+
+    for (league_id, season, playoffs_id), active_schedule_ids in playoff_groups.items():
+        if not active_schedule_ids:
+            continue
+
+        schedule_ids = ",".join(str(schedule_id) for schedule_id in sorted(active_schedule_ids))
+        sql = (
+            "SELECT scheduleID FROM lq_schedule "
+            "WHERE leagueID={league_id} and matchSeason='{season}' and playoffsID={playoffs_id} "
+            "and matchState=0 and scheduleID not in ({schedule_ids})"
+        ).format(
+            league_id=int(league_id),
+            season=sql_util.safe(str(season)),
+            playoffs_id=int(playoffs_id),
+            schedule_ids=schedule_ids,
+        )
+        stale_rows = sql_util.select_rows(sql)
+        for row in stale_rows:
+            schedule_id = int(row[0])
+            sql_util.upData(
+                'lq_schedule',
+                {
+                    'matchState': -4,
+                    'remainTime': '',
+                    'partscore_f': 2,
+                    'asianodds_f': 2,
+                    'totalodds_f': 2,
+                    'eurOdds_f': 2,
+                    'updateTime': getNowTime(),
+                },
+                {'scheduleID': schedule_id},
+            )
+            print("close removed playoff placeholder schedule: scheduleID={0}, playoffsID={1}".format(
+                schedule_id,
+                playoffs_id,
+            ))
