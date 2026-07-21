@@ -54,8 +54,8 @@ def evalPrechance(homeid, awayid):
                      "WHERE TeamID=" + str(awayid) + " ORDER BY ID DESC LIMIT 1"
     earlyodds_home = sql_util.select(early_homesql)
     earlyodds_away = sql_util.select(early_awaysql)
-    info_home = sql_util.select("select ID,Name_JS,LocationID,MatchAddrID FROM lq_team where ID=" + str(homeid))
-    info_away = sql_util.select("select ID,Name_JS,LocationID,MatchAddrID FROM lq_team where ID=" + str(awayid))
+    info_home = sql_util.select("select teamID,Name_JS,LocationID,MatchAddrID FROM lq_team where teamID=" + str(homeid))
+    info_away = sql_util.select("select teamID,Name_JS,LocationID,MatchAddrID FROM lq_team where teamID=" + str(awayid))
     print(earlyodds_home)
     print(earlyodds_away)
     print(info_home)
@@ -119,11 +119,11 @@ def evalPerform(matchid):
     # print(match_info[0][4])
     matchtime = match_info[0][4]
     # 主队基本信息
-    info_home = sql_util.select("select ID,Name_JS,LocationID,MatchAddrID FROM lq_team where ID=" + str(homeid))
+    info_home = sql_util.select("select teamID,Name_JS,LocationID,MatchAddrID FROM lq_team where teamID=" + str(homeid))
     print(hometeam + " 主队基本信息：")
     print(info_home)
     # 客队基本信息
-    info_away = sql_util.select("select ID,Name_JS,LocationID,MatchAddrID FROM lq_team where ID=" + str(awayid))
+    info_away = sql_util.select("select teamID,Name_JS,LocationID,MatchAddrID FROM lq_team where teamID=" + str(awayid))
     print(awayteam + " 客队基本信息：")
     print(info_away)
 

@@ -9,9 +9,11 @@ from utils.webUtil import WebUtil
 
 SOURCE_NAMESPACE = "titan_basketball"
 TITAN_IMAGE_BASE_URL = "https://nba.titan007.com"
+TITAN_BASIC_TIMEOUT = (30, 60)
+TITAN_VERSION_TIMEOUT = (30, 30)
 
 TEAM_COLUMNS = {
-    "ID": "ADD COLUMN `ID` int(11) NOT NULL",
+    "teamID": "ADD COLUMN `teamID` int(11) NOT NULL",
     "leagueID": "ADD COLUMN `leagueID` int(11) NULL",
     "locationID": "ADD COLUMN `locationID` int(11) NULL",
     "matchAddrID": "ADD COLUMN `matchAddrID` int(2) unsigned zerofill NULL",
@@ -49,7 +51,8 @@ TEAM_COLUMNS = {
 }
 
 TEAM_INDEXES = {
-    "PRIMARY": "ALTER TABLE `lq_team` ADD PRIMARY KEY (`ID`)",
+    "PRIMARY": "ALTER TABLE `lq_team` ADD PRIMARY KEY (`id`)",
+    "uk_lq_team_titan_id": "ALTER TABLE `lq_team` ADD UNIQUE KEY `uk_lq_team_titan_id` (`teamID`)",
     "idx_lq_team_league": "ALTER TABLE `lq_team` ADD KEY `idx_lq_team_league` (`leagueID`)",
 }
 
@@ -126,9 +129,9 @@ def update_team_info(league_id, version=None):
     inserted = 0
     updated = 0
     for row in rows:
-        result = sql_util.select_table_rows("lq_team", ["ID"], {"ID": row["ID"]})
+        result = sql_util.select_table_rows("lq_team", ["teamID"], {"teamID": row["teamID"]})
         if len(result) > 0:
-            sql_util.upData("lq_team", _update_payload(row), {"ID": row["ID"]})
+            sql_util.upData("lq_team", _update_payload(row), {"teamID": row["teamID"]})
             updated += 1
         else:
             sql_util.insertData("lq_team", row)
@@ -268,12 +271,12 @@ def mark_legacy_basic_information():
     team_legacy = _execute_counted(
         "UPDATE lq_team SET "
         "source_namespace='{source_namespace}', "
-        "source_entity_id=CAST(ID AS CHAR), "
+        "source_entity_id=CAST(teamID AS CHAR), "
         "updated_at='{now}', "
         "source_url_or_operation='legacy:lq_team', "
         "collection_status='legacy', "
         "has_data=1 "
-        "WHERE collection_status IS NULL AND ID IS NOT NULL".format(
+        "WHERE collection_status IS NULL AND teamID IS NOT NULL".format(
             source_namespace=SOURCE_NAMESPACE,
             now=now,
         )
@@ -296,7 +299,7 @@ def summarize_basic_information_status():
             "AND COALESCE(t.is_placeholder,0)=0 "
             "AND NOT EXISTS ("
             "  SELECT 1 FROM lq_team_roster_snapshot_batch b "
-            "  WHERE b.teamID=t.ID AND b.collection_status='success'"
+            "  WHERE b.teamID=t.teamID AND b.collection_status='success'"
             ")"
         ),
         "league_without_logo_url": _scalar(
@@ -317,15 +320,24 @@ def summarize_basic_information_status():
 def ensure_lq_team_schema():
     if not _table_exists("lq_team"):
         sql_util.sqlExecute(
-            "CREATE TABLE `lq_team` (`ID` int(11) NOT NULL, PRIMARY KEY (`ID`)) "
+            "CREATE TABLE `lq_team` ("
+            "`id` bigint unsigned NOT NULL AUTO_INCREMENT, "
+            "`teamID` int(11) NOT NULL, "
+            "PRIMARY KEY (`id`), "
+            "UNIQUE KEY `uk_lq_team_titan_id` (`teamID`)"
+            ") "
             "ENGINE=InnoDB DEFAULT CHARSET=utf8"
         )
+
+    _normalize_lq_team_identity_columns()
 
     columns = set(_columns("lq_team"))
     for column, ddl in TEAM_COLUMNS.items():
         if column not in columns:
             print("add lq_team.{0}".format(column))
             sql_util.sqlExecute("ALTER TABLE `lq_team` {0}".format(ddl))
+
+    _ensure_lq_team_identity()
 
     column_charsets = _column_charsets("lq_team")
     for column, ddl in TEAM_TEXT_COLUMN_DDL.items():
@@ -338,6 +350,73 @@ def ensure_lq_team_schema():
         if index_name not in indexes:
             print("add lq_team index {0}".format(index_name))
             sql_util.sqlExecute(ddl)
+
+
+def _ensure_lq_team_identity():
+    columns = set(_columns("lq_team"))
+    indexes = sql_util.select("SHOW INDEX FROM `lq_team`")
+    primary_columns = [row[4] for row in indexes if row[2] == "PRIMARY"]
+
+    if "id" not in columns:
+        if primary_columns:
+            print("add lq_team.id system primary key")
+            sql_util.sqlExecute(
+                """
+                ALTER TABLE `lq_team`
+                  DROP PRIMARY KEY,
+                  ADD COLUMN `id` bigint unsigned NOT NULL AUTO_INCREMENT FIRST,
+                  ADD PRIMARY KEY (`id`)
+                """
+            )
+        else:
+            print("add lq_team.id system primary key")
+            sql_util.sqlExecute(
+                """
+                ALTER TABLE `lq_team`
+                  ADD COLUMN `id` bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST
+                """
+            )
+    elif primary_columns != ["id"]:
+        print("move lq_team primary key to id")
+        sql_util.sqlExecute(
+            """
+            ALTER TABLE `lq_team`
+              DROP PRIMARY KEY,
+              ADD PRIMARY KEY (`id`)
+            """
+        )
+
+    indexes = sql_util.select("SHOW INDEX FROM `lq_team`")
+    index_names = {row[2] for row in indexes}
+    if "uk_lq_team_titan_id" not in index_names:
+        print("add lq_team.uk_lq_team_titan_id")
+        sql_util.sqlExecute(
+            """
+            ALTER TABLE `lq_team`
+              ADD UNIQUE KEY `uk_lq_team_titan_id` (`teamID`)
+            """
+        )
+
+
+def _normalize_lq_team_identity_columns():
+    columns = set(_columns("lq_team"))
+    if "ID" in columns and "teamID" not in columns:
+        print("rename lq_team.ID to lq_team.teamID")
+        sql_util.sqlExecute(
+            """
+            ALTER TABLE `lq_team`
+              CHANGE COLUMN `ID` `teamID` int(11) NOT NULL
+            """
+        )
+        columns = set(_columns("lq_team"))
+    if "systemID" in columns and "id" not in columns:
+        print("rename lq_team.systemID to lq_team.id")
+        sql_util.sqlExecute(
+            """
+            ALTER TABLE `lq_team`
+              CHANGE COLUMN `systemID` `id` bigint unsigned NOT NULL AUTO_INCREMENT
+            """
+        )
 
 
 def ensure_lq_team_league_relation_schema():
@@ -403,14 +482,21 @@ def fetch_team_info_js(league_id, version=None):
     captured_at = _now()
     if version is None:
         version = _resolve_team_info_version(league_id)
+    if version is None:
+        version = _current_titan_version()
+        print("basketball team info version fallback to current hour: league_id={0}, version={1}".format(
+            int(league_id),
+            version,
+        ), flush=True)
     url = urljoin(lqconfig_qt.lanqurl, "/jsData/teamInfo/ti{0}.js".format(int(league_id)))
     if version:
         url = url + "?version=" + str(version)
     response = WebUtil.requests_get(
         url,
         headers=_team_headers(league_id),
-        timeout=20,
-        retry_time=3,
+        timeout=TITAN_BASIC_TIMEOUT,
+        retry_time=1,
+        sleep=False,
         sourceName="lq team info",
     )
     if response[0] != 1:
@@ -423,14 +509,22 @@ def _resolve_team_info_version(league_id):
     response = WebUtil.requests_get(
         url,
         headers=_team_headers(league_id),
-        timeout=20,
-        retry_time=3,
+        timeout=TITAN_VERSION_TIMEOUT,
+        retry_time=1,
+        sleep=False,
         sourceName="lq team info page",
     )
     if response[0] != 1:
+        print("basketball team info version resolve failed: league_id={0}".format(
+            int(league_id)
+        ), flush=True)
         return None
     match = re.search(r"/jsData/teamInfo/ti{0}\.js\?version=([0-9]+)".format(int(league_id)), response[1])
     return match.group(1) if match else None
+
+
+def _current_titan_version():
+    return datetime.now().strftime("%Y%m%d%H")
 
 
 def _team_headers(league_id):
@@ -445,7 +539,7 @@ def _team_row(team, league_id, source_url, captured_at, recorded_at, source_stat
     flag = _value(team, 9)
     source_team_kind = _source_team_kind(team)
     return {
-        "ID": team_id,
+        "teamID": team_id,
         "leagueID": int(league_id),
         "name_j": _value(team, 1),
         "name_f": _value(team, 2),
@@ -484,7 +578,7 @@ def _source_team_kind(team):
 
 
 def _sync_team_league_relations(rows, league_id, season, source_url, captured_at, recorded_at, source_state_valid_at):
-    current_team_ids = {int(row["ID"]) for row in rows if row.get("ID") is not None}
+    current_team_ids = {int(row["teamID"]) for row in rows if row.get("teamID") is not None}
     inserted = 0
     updated = 0
     reactivated = 0

@@ -19,6 +19,14 @@ LEAGUE_NAME_ALIASES = {
     "美國女籃職業聯賽": "WNBA",
 }
 
+# lq_schedule.technical_f / textlive_f
+# 0 = pending: 未采集
+# 1 = refreshable: 已采到数据，但非终局比赛仍允许继续刷新
+# 2 = done: 已完成，不再采集；是否有实体数据看 *_has_data
+ENRICHMENT_FLAG_PENDING = 0
+ENRICHMENT_FLAG_REFRESHABLE = 1
+ENRICHMENT_FLAG_DONE = 2
+
 
 # ------------------------------------------实时维护联赛范围-------------------------------------
 
@@ -192,6 +200,81 @@ def update_team_info(league_id, version=None):
     from lq.service.league import LQleague
 
     return LQleague.updateTeamInfo(league_id, version=version)
+
+
+def diagnose_titan_team_info_request(league_id=1, version=None, trust_env=True):
+    import os
+    import re
+    from urllib.parse import urljoin
+
+    from config import lqconfig_qt
+    from utils.webUtil import WebUtil
+
+    from lq.service.team import TITAN_BASIC_TIMEOUT, TITAN_VERSION_TIMEOUT, _current_titan_version, _team_headers
+
+    proxy_env = {
+        key: value
+        for key, value in os.environ.items()
+        if "proxy" in key.lower()
+    }
+    page_url = urljoin(lqconfig_qt.lanqurl, "/cn/TeamInfo.aspx?SclassID={0}".format(int(league_id)))
+    print("diagnose titan team info request: league_id={0}, version={1}, trust_env={2}".format(
+        int(league_id),
+        version,
+        trust_env,
+    ), flush=True)
+    print("proxy env: {0}".format(proxy_env), flush=True)
+    print("page url: {0}".format(page_url), flush=True)
+
+    resolved_version = version
+    page_response = WebUtil.requests_get(
+        page_url,
+        headers=_team_headers(league_id),
+        timeout=TITAN_VERSION_TIMEOUT,
+        retry_time=1,
+        sleep=False,
+        sourceName="diagnose lq team info page",
+        trust_env=trust_env,
+    )
+    print("page response: state={0}, content_len={1}".format(
+        page_response[0],
+        len(page_response[1] or ""),
+    ), flush=True)
+    if page_response[0] == 1 and resolved_version is None:
+        match = re.search(r"/jsData/teamInfo/ti{0}\.js\?version=([0-9]+)".format(int(league_id)), page_response[1])
+        resolved_version = match.group(1) if match else None
+        print("resolved version: {0}".format(resolved_version), flush=True)
+    if resolved_version is None:
+        resolved_version = _current_titan_version()
+        print("fallback version: {0}".format(resolved_version), flush=True)
+
+    js_url = urljoin(lqconfig_qt.lanqurl, "/jsData/teamInfo/ti{0}.js".format(int(league_id)))
+    if resolved_version:
+        js_url = js_url + "?version=" + str(resolved_version)
+    print("js url: {0}".format(js_url), flush=True)
+    js_response = WebUtil.requests_get(
+        js_url,
+        headers=_team_headers(league_id),
+        timeout=TITAN_BASIC_TIMEOUT,
+        retry_time=1,
+        sleep=False,
+        sourceName="diagnose lq team info js",
+        trust_env=trust_env,
+    )
+    content = js_response[1] or ""
+    print("js response: state={0}, content_len={1}, preview={2}".format(
+        js_response[0],
+        len(content),
+        content[:160].replace("\n", " ").replace("\r", " "),
+    ), flush=True)
+    return {
+        "page_state": page_response[0],
+        "page_len": len(page_response[1] or ""),
+        "js_state": js_response[0],
+        "js_len": len(content),
+        "js_url": js_url,
+        "proxy_env": proxy_env,
+    }
 
 
 def update_league_info(league_id=None, version=None):
@@ -786,7 +869,14 @@ def _resolve_recent_seasons(league_id, season_count=3):
     if season_limit <= 0:
         raise ValueError("season_count must be greater than 0")
     url = lqconfig_qt.seajsWebdir + "sea{}.js".format(int(league_id))
-    state, content = WebUtil.requests_get(url, headers=lqconfig_qt.headers, sourceName="resolve lq season")
+    state, content = WebUtil.requests_get(
+        url,
+        headers=lqconfig_qt.headers,
+        timeout=(30, 60),
+        retry_time=1,
+        sleep=False,
+        sourceName="resolve lq season",
+    )
     if state != 1 or not content:
         raise ValueError("could not fetch Titan season list for league_id={}".format(league_id))
     parsed = js2pyUtil.js2c(content, source=url, required_names=("arrSeason",))
@@ -868,10 +958,14 @@ def _is_terminal_match_state(match_state):
         return False
 
 
-def _flag_after_collect(result, match_state):
+def _flag_after_collect(result, match_state, has_data):
     if not result.get("request_ok"):
+        if _is_terminal_match_state(match_state) and not has_data:
+            return ENRICHMENT_FLAG_DONE
         return None
-    return 2 if _is_terminal_match_state(match_state) else 1
+    if not has_data:
+        return ENRICHMENT_FLAG_DONE
+    return ENRICHMENT_FLAG_DONE if _is_terminal_match_state(match_state) else ENRICHMENT_FLAG_REFRESHABLE
 
 
 def _match_enrichment_state(schedule_id):
@@ -895,22 +989,26 @@ def update_match_technical(schedule_id, force=False, match_state=None):
     if state is None:
         print("technical update skipped, match not found: scheduleID={0}".format(schedule_id))
         return {"state": 0, "request_ok": False, "skipped": True, "reason": "match_not_found"}
-    if not force and int(state.get("technical_f") or 0) == 2:
+    if not force and int(state.get("technical_f") or 0) == ENRICHMENT_FLAG_DONE:
         print("technical update skipped, already finished: scheduleID={0}".format(schedule_id))
         return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
 
     result = Technical.upMatchTechnical(schedule_id)
     resolved_match_state = match_state if match_state is not None else state.get("matchState")
-    next_flag = _flag_after_collect(result, resolved_match_state)
+    has_team_data = result.get("periods", 0) > 0
+    has_player_data = result.get("players", 0) > 0
+    next_flag = _flag_after_collect(result, resolved_match_state, has_team_data or has_player_data)
     if next_flag is not None:
         sql_util.upData('lq_schedule', {
             'technical_f': next_flag,
-            'teamTech': 1 if next_flag == 2 and result.get("periods", 0) > 0 else 0,
-            'teamtechnic_has_data': 1 if result.get("periods", 0) > 0 else 0,
-            'playertechnic_has_data': 1 if result.get("players", 0) > 0 else 0,
+            'teamTech': 1 if next_flag == ENRICHMENT_FLAG_DONE and has_team_data else 0,
+            'teamtechnic_has_data': 1 if has_team_data else 0,
+            'playertechnic_has_data': 1 if has_player_data else 0,
         }, {'scheduleID': schedule_id})
-    print("technical update finished: scheduleID={0}, teams={1}, players={2}, periods={3}".format(
+    print("technical update finished: scheduleID={0}, request_ok={1}, flag={2}, teams={3}, players={4}, periods={5}".format(
         schedule_id,
+        result.get("request_ok"),
+        next_flag,
         result.get("teams", 0),
         result.get("players", 0),
         result.get("periods", 0),
@@ -926,20 +1024,23 @@ def update_match_text_live(schedule_id, force=False, match_state=None):
     if state is None:
         print("text live update skipped, match not found: scheduleID={0}".format(schedule_id))
         return {"state": 0, "request_ok": False, "skipped": True, "reason": "match_not_found"}
-    if not force and int(state.get("textlive_f") or 0) == 2:
+    if not force and int(state.get("textlive_f") or 0) == ENRICHMENT_FLAG_DONE:
         print("text live update skipped, already finished: scheduleID={0}".format(schedule_id))
         return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
 
     result = Technical.upMatchTextLive(schedule_id)
     resolved_match_state = match_state if match_state is not None else state.get("matchState")
-    next_flag = _flag_after_collect(result, resolved_match_state)
+    has_data = result.get("events", 0) > 0
+    next_flag = _flag_after_collect(result, resolved_match_state, has_data)
     if next_flag is not None:
         sql_util.upData('lq_schedule', {
             'textlive_f': next_flag,
-            'textlive_has_data': 1 if result.get("events", 0) > 0 else 0,
+            'textlive_has_data': 1 if has_data else 0,
         }, {'scheduleID': schedule_id})
-    print("text live update finished: scheduleID={0}, events={1}".format(
+    print("text live update finished: scheduleID={0}, request_ok={1}, flag={2}, events={3}".format(
         schedule_id,
+        result.get("request_ok"),
+        next_flag,
         result.get("events", 0),
     ))
     return result
@@ -978,6 +1079,24 @@ def update_enrichment_pending(
         print("enrichment pending update skipped, run scripts/migrate_lq_technical_event_tables.py first")
         return []
 
+    sql_util.sqlExecute(
+        "UPDATE lq_schedule SET technical_f={done} "
+        "WHERE technical_f={refreshable} "
+        "AND COALESCE(teamtechnic_has_data,0)=0 "
+        "AND COALESCE(playertechnic_has_data,0)=0".format(
+            done=ENRICHMENT_FLAG_DONE,
+            refreshable=ENRICHMENT_FLAG_REFRESHABLE,
+        )
+    )
+    sql_util.sqlExecute(
+        "UPDATE lq_schedule SET textlive_f={done} "
+        "WHERE textlive_f={refreshable} "
+        "AND COALESCE(textlive_has_data,0)=0".format(
+            done=ENRICHMENT_FLAG_DONE,
+            refreshable=ENRICHMENT_FLAG_REFRESHABLE,
+        )
+    )
+
     should_apply_default_window = start_match_time is None and until_match_time is None and season is None and season_count is None
     if start_match_time is None and should_apply_default_window:
         start_match_time = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
@@ -986,7 +1105,10 @@ def update_enrichment_pending(
 
     where = [
         "matchState in(-1,-4)",
-        "(technical_f in(0,1) or textlive_f in(0,1))",
+        "(technical_f in({pending},{refreshable}) or textlive_f in({pending},{refreshable}))".format(
+            pending=ENRICHMENT_FLAG_PENDING,
+            refreshable=ENRICHMENT_FLAG_REFRESHABLE,
+        ),
     ]
     if start_match_time is not None:
         where.append("matchTime >= '{}'".format(sql_util.safe(str(start_match_time))))
@@ -1374,6 +1496,7 @@ if __name__ == '__main__':
         #   venv/bin/python lq_update.py roster-info --team-id 2
         #   venv/bin/python lq_update.py roster-info --missing-only --skip-photo
         #   venv/bin/python lq_update.py photo-info
+
         # update_schedule_js()
         # upScheJsLocal()
         # update_schedule()
@@ -1381,6 +1504,9 @@ if __name__ == '__main__':
         # update_odds()
         # update_details()
         update_enrichment_pending(league_id=2, season_count=3)
+        
+        # diagnose_titan_team_info_request(league_id=1)
+        # diagnose_titan_team_info_request(league_id=1, trust_env=False)
 
 
         # from lq_update import update_basic_info, update_roster_info

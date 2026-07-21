@@ -22,7 +22,7 @@ def main():
     # 使用cursor()方法获取操作游标
     cursor = db.cursor()
     try:
-        sql = "INSERT INTO lq_team(ID, SCLASSID, NAME_JS, NAME_J, NAME_F, NAME_E, FLAG, " \
+        sql = "INSERT INTO lq_team(teamID, SCLASSID, NAME_JS, NAME_J, NAME_F, NAME_E, FLAG, " \
               "LOCATIONID, MATCHADDRID, URL, CITY, Gymnasium, Capacity, JOINYEAR, FIRSTTIME, Drillmaster) " \
               "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
         # 执行sql语句

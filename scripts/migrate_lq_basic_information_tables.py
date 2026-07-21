@@ -10,6 +10,7 @@ from utils import sql_util
 
 
 def migrate():
+    _ensure_team_identity()
     _create_team_league_relation()
     _create_player_team_competition_relation()
     _create_player_profile()
@@ -19,6 +20,12 @@ def migrate():
     _create_roster_current()
     _ensure_extra_columns()
     print("basketball basic information tables migrated")
+
+
+def _ensure_team_identity():
+    from lq.service.team import ensure_lq_team_schema
+
+    ensure_lq_team_schema()
 
 
 def _create_team_league_relation():

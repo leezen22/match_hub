@@ -12,8 +12,9 @@ Sports Workbench 只读消费这些表，并自行处理身份绑定、时序关
 
 - `source_namespace`: `titan_basketball`
 - Titan 联赛外部 ID：`lq_league.leagueID` / `source_entity_id`
-- Titan 球队外部 ID：`lq_team.ID` / `source_entity_id`
+- Titan 球队外部 ID：`lq_team.teamID` / `source_entity_id`
 - Titan 球员外部 ID：`lq_player_profile.playerID` / `source_entity_id`
+- `lq_team.id` 是本地自增主键，仅用于本库内部隔离外部 ID，不代表 canonical team identity。
 - `lq_player_profile.id` 是本地自增主键，仅用于本库内部隔离外部 ID，不代表 canonical player identity。
 
 ## 时间语义
@@ -45,7 +46,8 @@ Sports Workbench 只读消费这些表，并自行处理身份绑定、时序关
 
 主要字段：
 
-- `ID`: Titan TeamID。
+- `id`: 本地自增主键。
+- `teamID`: Titan TeamID。
 - `leagueID`: Titan 本次球队资料来源里的联赛上下文，不应理解为唯一永久主联赛。
 - `name_j`, `name_f`, `name_e`, `name_js`, `name_ft`, `name_et`: Titan 返回的球队名称字段。
 - `locationID`, `matchAddrID`, `city`, `gymnasium`, `capacity`, `joinYear`: Titan 球队属性。
@@ -116,6 +118,20 @@ Titan 联赛球队列表的采集关系，不表示 Match Hub 推断的主联赛
 - 通用采集字段同上。
 
 维护策略：每次采集都会记录批次；只有阵容 hash 变化或当前阵容缺失时，才写入明细快照，避免大量无效快照。
+
+### `lq_schedule` 技术/文字直播状态
+
+- `technical_f` / `textlive_f`:
+  - `0`: 未采集
+  - `1`: 已采集到数据，但仍允许在非终局比赛继续刷新
+  - `2`: 已完成，不再继续采集
+- “成功但无数据”也会被归为 `2`，避免后续任务重复打 Titan。
+- 对应统计字段：
+  - `teamtechnic_has_data`: 本次技术统计是否拿到球队级数据，`1`=有，`0`=无
+  - `playertechnic_has_data`: 本次技术统计是否拿到球员级数据，`1`=有，`0`=无
+  - `textlive_has_data`: 本次文字直播是否拿到事件数据，`1`=有，`0`=无
+
+这些字段只表示本次是否拿到实体数据，不替代 `technical_f` / `textlive_f` 的完成态判断。
 
 ### `lq_team_roster_snapshot`
 

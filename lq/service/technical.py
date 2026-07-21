@@ -6,6 +6,8 @@ from utils import sql_util
 from utils.js2pyUtil import logLine
 from utils.webUtil import WebUtil
 
+TITAN_ENRICHMENT_TIMEOUT = (30, 60)
+
 
 class Technical(object):
     TEAM_FIELD = [
@@ -180,7 +182,7 @@ class Technical(object):
             response = WebUtil.requests_get(
                 url,
                 headers=lqconfig_qt.headers,
-                timeout=5,
+                timeout=TITAN_ENRICHMENT_TIMEOUT,
                 sourceName=source_name,
             )
             if response[0] != 1:

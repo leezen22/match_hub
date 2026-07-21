@@ -15,6 +15,7 @@ from utils.webUtil import WebUtil
 
 SOURCE_NAMESPACE = "titan_basketball"
 TITAN_PAGE_BASE_URL = "https://nba.titan007.com"
+TITAN_BASIC_TIMEOUT = (30, 60)
 USD_SALARY_LEAGUE_IDS = {1, 2, 34, 42, 54}
 PLAYER_PHOTO_CACHE = {}
 
@@ -121,9 +122,9 @@ def update_all_team_rosters(limit=None, offset=0, missing_only=False, fetch_phot
     if league_id is not None:
         where.append("t.leagueID={0}".format(int(league_id)))
     teams = sql_util.select_dicts(
-        "SELECT DISTINCT t.ID,t.leagueID,t.name_j FROM lq_team t "
-        "LEFT JOIN lq_team_league_relation r ON r.teamID=t.ID AND r.relationStatus='active' "
-        "WHERE {0} ORDER BY t.leagueID,t.ID".format(" AND ".join(where))
+        "SELECT DISTINCT t.teamID,t.leagueID,t.name_j FROM lq_team t "
+        "LEFT JOIN lq_team_league_relation r ON r.teamID=t.teamID AND r.relationStatus='active' "
+        "WHERE {0} ORDER BY t.leagueID,t.teamID".format(" AND ".join(where))
     )
     if missing_only:
         collected_team_ids = {
@@ -133,7 +134,7 @@ def update_all_team_rosters(limit=None, offset=0, missing_only=False, fetch_phot
                 "WHERE source_namespace='{0}' AND collection_status='success'".format(SOURCE_NAMESPACE)
             )
         }
-        teams = [team for team in teams if int(team["ID"]) not in collected_team_ids]
+        teams = [team for team in teams if int(team["teamID"]) not in collected_team_ids]
     if offset:
         teams = teams[int(offset):]
     if limit is not None:
@@ -144,7 +145,7 @@ def update_all_team_rosters(limit=None, offset=0, missing_only=False, fetch_phot
     failed = 0
     failures = []
     for index, team in enumerate(teams, start=1):
-        team_id = int(team["ID"])
+        team_id = int(team["teamID"])
         try:
             print("start basketball roster update: {0}/{1}, team_id={2}, team_name={3}".format(
                 index,
@@ -303,8 +304,9 @@ def fetch_team_detail_js(team_id, version=None):
     response = WebUtil.requests_get(
         url,
         headers=_team_detail_headers(team_id),
-        timeout=20,
-        retry_time=3,
+        timeout=TITAN_BASIC_TIMEOUT,
+        retry_time=1,
+        sleep=False,
         sourceName="lq team roster",
     )
     if response[0] != 1:
@@ -764,7 +766,7 @@ def _current_has_scope(league_id, team_id, season):
 def _record_roster_failure(team):
     now = _now()
     league_id = int(team.get("leagueID") or 0)
-    team_id = int(team["ID"])
+    team_id = int(team["teamID"])
     season = ""
     snapshot_batch_id = _snapshot_batch_id(league_id, team_id, season, now, "failed")
     row = {

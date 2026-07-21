@@ -59,7 +59,8 @@ class WebUtil(object):
     @staticmethod
     def requests_get(url, headers=None, timeout=5, isProxy=False, proxy=None,
                      retry_time=2, sleep=True, retry_interval=2,
-                     isMobile=False, sourceName=None, encoding=None):
+                     isMobile=False, sourceName=None, encoding=None,
+                     trust_env=True):
         state = 0
         content = ''
         ip = ''
@@ -77,15 +78,22 @@ class WebUtil(object):
         count = 0
         info = ''
         while state != 1 and count < retry_time and state != 4:
+            attempt = count + 1
             if isMobile:
                 headers['User-Agent'] = random.choice(common_config.mobile_agents)
             else:
                 headers['User-Agent'] = random.choice(common_config.web_agents)
             try:
+                start_time = time.time()
                 if proxy_format:
                     filePage = requests.get(url, headers=headers, proxies=proxy_format, timeout=timeout)
                 elif isProxy is False:
-                    filePage = requests.get(url, headers=headers, timeout=timeout)
+                    if trust_env:
+                        filePage = requests.get(url, headers=headers, timeout=timeout)
+                    else:
+                        session = requests.Session()
+                        session.trust_env = False
+                        filePage = session.get(url, headers=headers, timeout=timeout)
                 # 使用代理但无代理IP可用
                 else:
                     return [state, content]
@@ -95,9 +103,12 @@ class WebUtil(object):
                     state = 4
                 if proxy_format and count == retry_time:
                     sql_util.upData('proxyip', {'http_state': 3}, {'ip': ip})
-                if sleep:
+                info = "{0},{1} 请求异常 attempt={2}/{3} {4}, {5}".format(
+                    sourceName, ip, attempt, retry_time, url, e
+                )
+                print(info, flush=True)
+                if sleep and count < retry_time:
                     time.sleep(retry_interval)
-                info = "{0},{1} 请求异常 {2}, {3}".format(sourceName, ip, url, e)
             else:
                 if filePage.status_code == 200 and filePage.text != '':
                     state = 1
@@ -107,7 +118,15 @@ class WebUtil(object):
                     content = filePage.text
                 else:
                     state = 4
-                info = "{0},{1}, 请求无异常：{2}, {3}".format(sourceName, ip, filePage.status_code, url)
+                info = "{0},{1}, 请求无异常 attempt={2}/{3} status={4} elapsed={5:.2f}s, {6}".format(
+                    sourceName,
+                    ip,
+                    attempt,
+                    retry_time,
+                    filePage.status_code,
+                    time.time() - start_time,
+                    url,
+                )
         if state == 0 or state == 4:
             info = "HTTP_GET_FAILED source={0} url={1} proxy_ip={2} detail={3}".format(
                 sourceName, url, ip, info
