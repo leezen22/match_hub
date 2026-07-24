@@ -1497,12 +1497,12 @@ if __name__ == '__main__':
         #   venv/bin/python lq_update.py roster-info --missing-only --skip-photo
         #   venv/bin/python lq_update.py photo-info
 
-        # update_schedule_js()
+        update_schedule_js()
         # upScheJsLocal()
-        # update_schedule()
-        # update_score()
-        # update_odds()
-        # update_details()
+        update_schedule()
+        update_score()
+        update_odds()
+        update_details()
         update_enrichment_pending(league_id=2, season_count=3)
         
         # diagnose_titan_team_info_request(league_id=1)

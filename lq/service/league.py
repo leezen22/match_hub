@@ -102,8 +102,9 @@ class LQleague(object):
     @staticmethod
     def getSchejsPending(sclass):
         pendinglist = []
+        leagueId, kind_type = LQleague._schedule_league_values(sclass)
         # 联赛赛季信息JS文件
-        seafilename = 'sea' + str(sclass[0]) + '.js'
+        seafilename = 'sea' + str(leagueId) + '.js'
         seajsUrl = lqconfig_qt.seajsWebdir + seafilename
         webresponse = WebUtil.requests_get(seajsUrl, headers=lqconfig_qt.headers,
                                            sourceName='update_lanqiu.getSchejsPending ')
@@ -117,7 +118,6 @@ class LQleague(object):
                 webcontext = parse_result[1]
                 arrSeason_web = webcontext.arrSeason
                 for seasondata in arrSeason_web:
-                    leagueId = sclass[0]
                     season = seasondata[0]
                     season_state = seasondata[1] if len(seasondata) > 1 else 1
                     if season_state == 2 and not lqconfig_qt.enable_finished_season_backfill:
@@ -136,10 +136,10 @@ class LQleague(object):
                             stask['seasonPath'] = seafilename
                             stask['state'] = 1
                             sql_util.insertData('lq_season_crawler', stask)
-                        scheJSList = LQleague.getScheJS(sclass[0], season, sclass[2])
+                        scheJSList = LQleague.getScheJS(leagueId, season, kind_type)
                         for schejs in scheJSList:
                             filename = os.path.basename(schejs[1])
-                            scheKey = str(sclass[0]) + "#" + str(model.changeSeason(season)) + "#" + filename
+                            scheKey = str(leagueId) + "#" + str(model.changeSeason(season)) + "#" + filename
                             condition = {'scheKey': scheKey}
                             keys = ['ID', 'scheKey', 'leagueId', 'matchSeason', 'fileName', 'schePath', 'schePath',
                                     'state']
@@ -156,6 +156,12 @@ class LQleague(object):
                 fileUtil.logLine(common_config.js2pyweb_e, ["LQ_SCHEJS_PENDING_FAILED", seajsUrl, repr(e), traceback.format_exc()])
                 print(e)
         return pendinglist
+
+    @staticmethod
+    def _schedule_league_values(sclass):
+        if isinstance(sclass, dict):
+            return int(sclass["league_id"]), int(sclass["kind_type"])
+        return int(sclass[0]), int(sclass[2])
 
     @staticmethod
     def loadSchejs(seasidlist):
@@ -186,8 +192,9 @@ class LQleague(object):
             scheContext = parse_result[1]
             if parse_result[0] == 1 and scheContext != '':
                 try:
-                    haveMk = scheContext.arrLeague[11]
-                    ymlist = scheContext.ymList
+                    arr_league = _get_js_value(scheContext, 'arrLeague', [])
+                    haveMk = arr_league[11] if len(arr_league) > 11 else ''
+                    ymlist = _get_js_value(scheContext, 'ymList', [])
                     # 下载常规赛赛程
                     LQleague.loadRegularJS(leagueId, season2, ymlist)
                     if '3' in haveMk:
@@ -243,59 +250,85 @@ class LQleague(object):
         jsfilelist = []
         # 联赛
         if type == 1:
+            season_path = model.changeSeason(season)
+
+            def append_schedule_src(sche_src):
+                if not sche_src:
+                    return
+                filename = os.path.basename(sche_src.split('?')[0])
+                if not filename.endswith('.js'):
+                    return
+                js_url = urljoin(lqconfig_qt.lanqurl, sche_src)
+                js_path = lqconfig_qt.schelocaldir + season_path + '/' + filename
+                item = [js_url, js_path]
+                if item not in jsfilelist:
+                    jsfilelist.append(item)
+
             # 本联赛赛季常规赛赛程默认地址
             defaulturl1 = lqconfig_qt.lanqurl + '/cn/Normal.aspx?SclassID=' + str(leagueId) + '&MatchSeason=' + str(
                 season)
             defaulturl3 = lqconfig_qt.lanqurl + '/cn/Preseason.aspx?SclassID=' + str(leagueId) + '&MatchSeason=' + str(
                 season)
-            defaulturl2 = lqconfig_qt.lanqurl + '/cn/Playoffs.aspx.aspx?SclassID=' + str(leagueId) + '&MatchSeason=' + str(
+            defaulturl2 = lqconfig_qt.lanqurl + '/cn/Playoffs.aspx?SclassID=' + str(leagueId) + '&MatchSeason=' + str(
                 season)
-            urls = [defaulturl1, defaulturl2, defaulturl3]
-            for url in urls:
-                scheSrc = LQleague.findScheJS(url, lqconfig_qt.headers)
-                if scheSrc != '':
-                    break
+            scheSrc = LQleague.findScheJS(defaulturl1, lqconfig_qt.headers)
             # print([leagueId, season, type, defaulturl, scheSrc])
             if scheSrc == '':
+                append_schedule_src(LQleague.findScheJS(defaulturl3, lqconfig_qt.headers))
+                append_schedule_src(LQleague.findScheJS(defaulturl2, lqconfig_qt.headers))
                 return jsfilelist
+            sche_url = urljoin(lqconfig_qt.lanqurl, scheSrc)
             parse_result = js2pyUtil.jsyWebjs(
-                urljoin(lqconfig_qt.lanqurl, scheSrc),
+                sche_url,
                 lqconfig_qt.headers,
-                required_names=("arrLeague", "ymList"),
+                required_names=("arrLeague", "arrData", "ymList"),
             )
             scheContext = parse_result[1]
             if parse_result[0] == 1 and scheContext != '':
                 try:
-                    haveMk = scheContext.arrLeague[11]
-                    ymlist = scheContext.ymList
+                    arr_league = _get_js_value(scheContext, 'arrLeague', [])
+                    haveMk = arr_league[11] if len(arr_league) > 11 else ''
+                    ymlist = _get_js_value(scheContext, 'ymList', [])
                     # 获取常规赛赛程JS文件地址信息
-                    for ym in ymlist:
-                        season = model.changeSeason(season)
-                        filename = 'l' + str(leagueId) + '_' + '1' + '_' + str(ym[0]) + '_' + str(ym[1]) + '.js'
-                        jsUrl = lqconfig_qt.scheWebdir + season + '/' + filename
-                        jsPath = lqconfig_qt.schelocaldir + season + '/' + filename
-                        jsfilelist.append([jsUrl, jsPath])
+                    if len(ymlist) == 0:
+                        fileUtil.logLine(common_config.js2pyweb_e, ["LQ_GET_SCHEJS_YMLIST_MISSING", sche_url])
+                        append_schedule_src(scheSrc)
+                    else:
+                        for ym in ymlist:
+                            filename = 'l' + str(leagueId) + '_' + '1' + '_' + str(ym[0]) + '_' + str(ym[1]) + '.js'
+                            jsUrl = lqconfig_qt.scheWebdir + season_path + '/' + filename
+                            jsPath = lqconfig_qt.schelocaldir + season_path + '/' + filename
+                            jsfilelist.append([jsUrl, jsPath])
                     # 获取季前赛赛程JS文件地址信息
                     if '3' in haveMk:
                         filename = 'l' + str(leagueId) + '_' + '3' + '.js'
-                        jsUrl = lqconfig_qt.scheWebdir + season + '/' + filename
-                        jsPath = lqconfig_qt.schelocaldir + season + '/' + filename
-                        jsfilelist.append([jsUrl, jsPath])
+                        jsUrl = lqconfig_qt.scheWebdir + season_path + '/' + filename
+                        jsPath = lqconfig_qt.schelocaldir + season_path + '/' + filename
+                        item = [jsUrl, jsPath]
+                        if item not in jsfilelist:
+                            jsfilelist.append(item)
                     # 获取季后赛赛程JS文件地址信息
                     if '2' in haveMk:
                         filename = 'l' + str(leagueId) + '_' + '2' + '.js'
-                        jsUrl = lqconfig_qt.scheWebdir + season + '/' + filename
-                        jsPath = lqconfig_qt.schelocaldir + season + '/' + filename
-                        jsfilelist.append([jsUrl, jsPath])
+                        jsUrl = lqconfig_qt.scheWebdir + season_path + '/' + filename
+                        jsPath = lqconfig_qt.schelocaldir + season_path + '/' + filename
+                        item = [jsUrl, jsPath]
+                        if item not in jsfilelist:
+                            jsfilelist.append(item)
                 except Exception as e:
-                    fileUtil.logLine(common_config.js2pyweb_e, ["LQ_GET_SCHEJS_CONTEXT_ERROR", url, repr(e), traceback.format_exc()])
+                    fileUtil.logLine(common_config.js2pyweb_e, ["LQ_GET_SCHEJS_CONTEXT_ERROR", sche_url, repr(e), traceback.format_exc()])
+                    append_schedule_src(scheSrc)
                     print(e)
+            else:
+                append_schedule_src(scheSrc)
+                append_schedule_src(LQleague.findScheJS(defaulturl3, lqconfig_qt.headers))
+                append_schedule_src(LQleague.findScheJS(defaulturl2, lqconfig_qt.headers))
         # 杯赛
         elif type == 2:
             filename = 'c' + str(leagueId) + '.js'
-            season = model.changeSeason(season)
-            cupJSurl = lqconfig_qt.scheWebdir + season + '/' + filename
-            jsPath = lqconfig_qt.schelocaldir + season + '/' + filename
+            season_path = model.changeSeason(season)
+            cupJSurl = lqconfig_qt.scheWebdir + season_path + '/' + filename
+            jsPath = lqconfig_qt.schelocaldir + season_path + '/' + filename
             jsfilelist.append([cupJSurl, jsPath])
         else:
             pass
@@ -306,9 +339,9 @@ class LQleague(object):
     def getLocalfiles(sclassID, kindtype):
         fileList = []
         context = js2pyUtil.jsLocjs(lqconfig_qt.seajslocaldir + 'sea' + str(sclassID) + '.js')
-        if not context or not hasattr(context, 'arrSeason'):
+        seasonlist = _get_js_value(context, 'arrSeason') if context else None
+        if seasonlist is None:
             return fileList
-        seasonlist = context.arrSeason
         for season in seasonlist:
             season2 = model.changeSeason(season[0])
             schedir = lqconfig_qt.schelocaldir + season2 + '/'
@@ -332,9 +365,9 @@ class LQleague(object):
     def getPendingSchejs(sclassID, kindtype):
         fileList = []
         context = js2pyUtil.jsLocjs(lqconfig_qt.seajslocaldir + 'sea' + str(sclassID) + '.js')
-        if not context or not hasattr(context, 'arrSeason'):
+        seasonlist = _get_js_value(context, 'arrSeason') if context else None
+        if seasonlist is None:
             return fileList
-        seasonlist = context.arrSeason
         for season in seasonlist:
             season2 = model.changeSeason(season[0])
             schedir = os.path.join(lqconfig_qt.schedule_js_work_dir, season2)
@@ -462,6 +495,13 @@ class LQleague(object):
 def _empty_to_none(value):
     value = str(value or "").strip()
     return value if value else None
+
+
+def _get_js_value(context, name, default=None):
+    try:
+        return getattr(context, name)
+    except Exception:
+        return default
 
 
 def _parse_country_id(value):
