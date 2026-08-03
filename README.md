@@ -108,6 +108,11 @@ The structured path does not parse natural-language request text. It uses
 explicit `sport`, `league-id`, and `action` parameters, then lets the
 sport-specific updater resolve omitted Titan season/type metadata.
 
+For a Football competition absent from the Titan league metadata catalog, the
+structured dry-run can still be built only when `--season`, `--league-type`,
+and `--if-have-sub` are all supplied explicitly. No missing competition
+metadata is guessed, and execution still requires `--execute`.
+
 Natural-language basketball and football update requests are supported for
 operator-facing use:
 
