@@ -47,6 +47,7 @@ class FootballExplicitMetadataPlanningTest(unittest.TestCase):
     def test_catalog_miss_lists_metadata_required_for_safe_plan(self) -> None:
         with (
             patch.object(zq_update, "_resolve_league_by_id", return_value=None),
+            patch.object(zq_update, "_resolve_league_detail_by_id", return_value=None),
             self.assertRaisesRegex(
                 ValueError,
                 "provide explicit season, league_type, if_have_sub",

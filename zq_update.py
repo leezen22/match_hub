@@ -7,6 +7,9 @@ from datetime import datetime, timedelta
 
 from config import zqconfig_qt
 from utils import fileUtil
+from zq.league_metadata import (
+    resolve_league_detail_by_id as _resolve_league_detail_by_id,
+)
 
 DEFAULT_ODDS_START_TIME = '2026-06-05 00:00:00'
 
@@ -216,6 +219,13 @@ def parse_natural_update_request(
         resolved_league_id = resolved_league["league_id"]
     if resolved_league is None:
         resolved_league = _resolve_league_by_id(resolved_league_id)
+    missing_explicit_metadata = (
+        resolved_season is None
+        or resolved_league_type is None
+        or resolved_if_have_sub is None
+    )
+    if resolved_league is None and missing_explicit_metadata:
+        resolved_league = _resolve_league_detail_by_id(resolved_league_id)
     if resolved_league is not None:
         if resolved_league_type is None:
             resolved_league_type = resolved_league["league_type"]
@@ -223,7 +233,10 @@ def parse_natural_update_request(
             resolved_if_have_sub = resolved_league["if_have_sub"]
         if resolved_season is None:
             resolved_season = resolved_league["seasons"][0]
-        metadata_binding_status = "catalog_resolved"
+        metadata_binding_status = resolved_league.get(
+            "metadata_binding_status",
+            "catalog_resolved",
+        )
     else:
         missing_metadata = []
         if resolved_season is None:

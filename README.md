@@ -113,6 +113,13 @@ structured dry-run can still be built only when `--season`, `--league-type`,
 and `--if-have-sub` are all supplied explicitly. No missing competition
 metadata is guessed, and execution still requires `--execute`.
 
+When those fields are omitted, Match Hub may use an identity-bound Football
+detail fallback: it reads the league's Titan season file and competition page,
+then requires matching league ID, selected season, sub-league ID, and schedule
+script identity before constructing the dry-run. Conflicting or incomplete
+page evidence fails closed, and the fallback never executes an update by
+itself.
+
 Natural-language basketball and football update requests are supported for
 operator-facing use:
 
