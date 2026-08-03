@@ -216,14 +216,31 @@ def parse_natural_update_request(
         resolved_league_id = resolved_league["league_id"]
     if resolved_league is None:
         resolved_league = _resolve_league_by_id(resolved_league_id)
-    if resolved_league is None:
-        raise ValueError("could not resolve football league metadata for league_id={}".format(resolved_league_id))
-    if resolved_league_type is None:
-        resolved_league_type = resolved_league["league_type"]
-    if resolved_if_have_sub is None:
-        resolved_if_have_sub = resolved_league["if_have_sub"]
-    if resolved_season is None:
-        resolved_season = resolved_league["seasons"][0]
+    if resolved_league is not None:
+        if resolved_league_type is None:
+            resolved_league_type = resolved_league["league_type"]
+        if resolved_if_have_sub is None:
+            resolved_if_have_sub = resolved_league["if_have_sub"]
+        if resolved_season is None:
+            resolved_season = resolved_league["seasons"][0]
+        metadata_binding_status = "catalog_resolved"
+    else:
+        missing_metadata = []
+        if resolved_season is None:
+            missing_metadata.append("season")
+        if resolved_league_type is None:
+            missing_metadata.append("league_type")
+        if resolved_if_have_sub is None:
+            missing_metadata.append("if_have_sub")
+        if missing_metadata:
+            raise ValueError(
+                "could not resolve football league metadata for league_id={}; "
+                "provide explicit {}".format(
+                    resolved_league_id,
+                    ", ".join(missing_metadata),
+                )
+            )
+        metadata_binding_status = "explicit_parameters_without_catalog_match"
 
     stage = "schedule-league-season" if resolved_action == "schedule" else "league-season-data"
     resolved_until_match_time = None
@@ -260,7 +277,8 @@ def parse_natural_update_request(
         "action": resolved_action,
         "stage": stage,
         "league_id": resolved_league_id,
-        "league_name": resolved_league["league_name"],
+        "league_name": resolved_league["league_name"] if resolved_league is not None else None,
+        "metadata_binding_status": metadata_binding_status,
         "season": resolved_season,
         "league_type": resolved_league_type,
         "if_have_sub": resolved_if_have_sub,
