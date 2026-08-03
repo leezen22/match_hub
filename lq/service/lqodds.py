@@ -29,18 +29,17 @@ class LqOddsService(object):
         pass
 
     @staticmethod
-    def upOdds():
+    def upOdds(lookback_days=14, until_days=1):
         fileUtil.logLine(lqconfig_qt.update_log, ['开始更新篮球初盘/即时盘'])
         print(getNowTime() + " 开始更新篮球初盘/即时盘")
         now = datetime.now()
-        # time = "'" + now.strftime("%Y-%m-%d %H:%M:%S") + "'"
-        # time1 = "'" + (now + timedelta(hours=-4)).strftime("%Y-%m-%d %H:%M:%S") + "'"
-        time2 = "'" + (now + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S") + "'"
+        time1 = "'" + (now + timedelta(days=-int(lookback_days))).strftime("%Y-%m-%d %H:%M:%S") + "'"
+        time2 = "'" + (now + timedelta(days=int(until_days))).strftime("%Y-%m-%d %H:%M:%S") + "'"
         # and leagueID in (1, 2, 5, 7, 14, 15, 19, 25, 20, 28, 22)
         asiansql = "SELECT scheduleID, leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
-                   " WHERE asianodds_f in(0,1,4) and matchState>=-1 and MatchTime < {0} order by matchTime ASC ".format(time2)
+                   " WHERE asianodds_f in(0,1,4) and matchState>=-1 and MatchTime >= {0} and MatchTime < {1} order by matchTime ASC ".format(time1, time2)
         totalsql = "SELECT scheduleID,leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
-                   " WHERE totalodds_f in(0,1,4) and matchState>=-1 and matchTime < {0} order by matchTime ASC ".format(time2)
+                   " WHERE totalodds_f in(0,1,4) and matchState>=-1 and matchTime >= {0} and matchTime < {1} order by matchTime ASC ".format(time1, time2)
 
         # totalsql= {}
         asianMatchList = sql_util.select(asiansql)
@@ -62,7 +61,10 @@ class LqOddsService(object):
         # 等待所有线程完成
         for t in threads:
             t.join()
-        print(getNowTime() + " 初盘/即时盘更新成功")
+        print(getNowTime() + " 初盘/即时盘更新成功, lookback_days={0}, until_days={1}".format(
+            lookback_days,
+            until_days,
+        ))
 
     @staticmethod
     def up_total_Odds():
@@ -194,8 +196,11 @@ class LqOddsService(object):
 
     # scope 1 赛前 2赛中 3赛前+赛中
     @staticmethod
-    def up_2in1Details_byCid(companyId, scope):
+    def up_2in1Details_byCid(companyId, scope, lookback_days=14, until_days=1):
         # scope = 3
+        now = datetime.now()
+        time1 = (now + timedelta(days=-int(lookback_days))).strftime("%Y-%m-%d %H:%M:%S")
+        time2 = (now + timedelta(days=int(until_days))).strftime("%Y-%m-%d %H:%M:%S")
         sql = """SELECT sche.matchId,sche.scheduleId,sche.matchState,sche.matchTime,
             tot.companyId,
             tot.oddsId as total_oddsId ,
@@ -209,12 +214,23 @@ class LqOddsService(object):
             on asian.companyId = tot.companyId and asian.matchId = tot.matchId
             left JOIN `lq_schedule` as sche 
             on sche.matchId = tot.matchId
-            WHERE tot.companyId={0} and (tot.finished_gun in(0,1,4) or asian.finished_gun in(0,1,4)) 
-            and sche.matchTime>='2025-01-01 00:00' 
+            WHERE tot.companyId={0}
+            and (
+                tot.finished_pre in(0,1,4) or tot.finished_gun in(0,1,4)
+                or asian.finished_pre in(0,1,4) or asian.finished_gun in(0,1,4)
+            )
+            and sche.matchTime>='{1}'
+            and sche.matchTime<'{2}'
             and sche.matchState >=-1 order by sche.matchtime ASC
-        """.format(companyId)
+        """.format(companyId, time1, time2)
         results = cast(Tuple[Tuple[Any, ...], ...], LqAsianOddsDao.select(sql))
         size = len(results)
+        print("开始更新篮球2合1赔率变化: companyId={0}, count={1}, lookback_days={2}, until_days={3}".format(
+            companyId,
+            size,
+            lookback_days,
+            until_days,
+        ))
         for item in results:
             print(str(companyId)+"变化记录剩余比赛：" + str(size) + ",最新 ：" + str(item))
             matchId = item[0]

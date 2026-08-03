@@ -7,6 +7,10 @@ from pymysql.converters import escape_string
 DB_PROFILE = "default"
 
 
+class SqlConnectionError(RuntimeError):
+    pass
+
+
 def _connect(connect_timeout=None):
     config = get_db_config(DB_PROFILE)
     if connect_timeout is not None:
@@ -194,6 +198,8 @@ def select_Execute(sql, isdict=False):
                 cursor = db.cursor()
             cursor.execute(sql)
             results = cursor.fetchall()
+    except SqlConnectionError:
+        raise
     except Exception as e:
         print("SQL_SELECT_FAILED sql={0} error={1}".format(sql, e))
     finally:
@@ -204,22 +210,22 @@ def select_Execute(sql, isdict=False):
 
 def reConndb():
     # 数据库连接重试功能和连接超时功能的DB连接
-    conn_status = True
     max_retries_count = 10  # 设置最大重试次数
     conn_retries_count = 0  # 初始重试次数
     conn_timeout = 5  # 连接超时时间为5秒
+    last_error = None
 
-    while conn_status and conn_retries_count <= max_retries_count:
+    while conn_retries_count < max_retries_count:
         try:
             conn = _connect(connect_timeout=conn_timeout)
-            _conn_status = False
             # 如果conn成功则_status为设置为False则退出循环，返回db连接对象
             return conn
         except Exception as e:
+            last_error = e
             conn_retries_count += 1
-            if conn_retries_count == 10:
+            if conn_retries_count == max_retries_count:
                 print("SQL_CONNECT_FAILED retries={0} error={1}".format(conn_retries_count, e))
-    return None
+    raise SqlConnectionError("SQL_CONNECT_FAILED retries={0} error={1}".format(max_retries_count, last_error))
 
 
 def safe(s):

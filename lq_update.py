@@ -27,6 +27,26 @@ ENRICHMENT_FLAG_PENDING = 0
 ENRICHMENT_FLAG_REFRESHABLE = 1
 ENRICHMENT_FLAG_DONE = 2
 
+# Realtime enrichment league ids.
+# Directly edit this list when you want the default enrichment task to focus on
+# high-priority leagues. Less important leagues can be updated later with
+# `enrichment-pending --all-leagues` or `enrichment-pending --league-ids 2,5,7`.
+REALTIME_ENRICHMENT_LEAGUE_IDS = (
+    2,  # leagueId=2
+    1,  # leagueId=1
+    # 5,  # leagueId=5
+    # 7,  # leagueId=7
+)
+
+# Realtime basic information league ids.
+# Used by basic-info / roster-info when no --league-id is provided.
+REALTIME_BASIC_INFO_LEAGUE_IDS = (
+    2,  # leagueId=2
+    1,  # leagueId=1
+    # 5,  # leagueId=5
+    # 7,  # leagueId=7
+)
+
 
 # ------------------------------------------实时维护联赛范围-------------------------------------
 
@@ -130,51 +150,134 @@ def up_match_data(scheduleIdArr):
     from lq.dao.TotalScoreDao import upTotalOddsBymid
     from utils import sql_util
 
-    # scheduleIdArr= ['1716532','1756832']
-    # now = datetime.now()
-    # time = "'" + now.strftime("%Y-%m-%d %H:%M:%S") + "'"
-    # time1 = "'" + (now + timedelta(hours=-4)).strftime("%Y-%m-%d %H:%M:%S") + "'"
-    # time2 = "'" + (now + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S") + "'"
-    # and leagueID in (1, 2, 5, 7, 14, 15, 19, 25, 20, 28, 22)
+    summary = {
+        "matches": 0,
+        "missing": 0,
+        "partscore": 0,
+        "asian": 0,
+        "total": 0,
+        "details": 0,
+        "enrichment": 0,
+        "skipped_idle": 0,
+    }
     for matchId in scheduleIdArr:
         schedulesql = "SELECT scheduleID, leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f," \
-                      "homeScore1,homeScore2,homeScore3,homeScore4,awayScore1,awayScore2,awayScore3,awayScore4 FROM `lq_schedule`" \
+                      "homeScore1,homeScore2,homeScore3,homeScore4,awayScore1,awayScore2,awayScore3,awayScore4," \
+                      "technical_f,textlive_f FROM `lq_schedule`" \
                       " WHERE matchState>=-1 and scheduleId = {0} order by matchTime ASC ".format(matchId)
-        asiansql = "SELECT scheduleID, leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
-                   " WHERE asianodds_f in(0,1) and matchState>=-1 and scheduleId = {0} order by matchTime ASC ".format(matchId)
-        totalsql = "SELECT scheduleID,leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
-                   " WHERE totalodds_f in(0,1) and matchState>=-1 and scheduleId = {0} order by matchTime ASC ".format(matchId)
-        # totalsql= {}
         scheduleMatchList = sql_util.select_rows(schedulesql)
-        asianMatchList = sql_util.select_rows(asiansql)
-        print(scheduleMatchList)
-        if len(scheduleMatchList) > 0 and _should_update_part_score(
-                scheduleMatchList[0][2],
-                scheduleMatchList[0][3],
-                scheduleMatchList[0][4],
-                scheduleMatchList[0][7:15]):
+        if len(scheduleMatchList) == 0:
+            summary["missing"] += 1
+            print("比赛不存在或状态不在更新范围，跳过: " + str(matchId))
+            continue
+
+        summary["matches"] += 1
+        match = scheduleMatchList[0]
+        match_state = match[2]
+        match_time = match[3]
+        partscore_f = match[4]
+        asianodds_f = match[5]
+        totalodds_f = match[6]
+        score_parts = match[7:15]
+        technical_f = match[15]
+        textlive_f = match[16]
+        did_work = False
+
+        if _should_update_part_score(match_state, match_time, partscore_f, score_parts):
             up_score_batch([matchId])
+            summary["partscore"] += 1
+            did_work = True
         else:
             print("小节比分未到更新时间或已完成，跳过: " + str(matchId))
-        print(asianMatchList)
-        totalMatchList = sql_util.select_rows(totalsql)
-        print(totalMatchList)
-        if len(asianMatchList)>0:
-            match=asianMatchList[0]
-            if match[5] != 2:
-                upAsianOddsBymid(match[0], match[5])
-        if len(totalMatchList)>0:
-            match=totalMatchList[0]
-            if match[6] != 2:
-                # 比赛ID，更新状态
-                upTotalOddsBymid(match[0], match[6])
 
-        up_2in1Details_by_match(matchId, 8, 3)
-        up_2in1Details_by_match(matchId, 3, 3)
-        if len(scheduleMatchList) > 0 and _is_terminal_match_state(scheduleMatchList[0][2]):
-            update_match_enrichment(matchId)
+        if _is_pending_flag(asianodds_f, pending_values=(0, 1, 4)):
+            upAsianOddsBymid(matchId, asianodds_f)
+            summary["asian"] += 1
+            did_work = True
         else:
-            print("技术统计/事件未完场，跳过: " + str(matchId))
+            print("亚盘赔率已完成，跳过: " + str(matchId))
+
+        if _is_pending_flag(totalodds_f, pending_values=(0, 1, 4)):
+            upTotalOddsBymid(matchId, totalodds_f)
+            summary["total"] += 1
+            did_work = True
+        else:
+            print("大小分赔率已完成，跳过: " + str(matchId))
+
+        if _has_pending_2in1_details(matchId):
+            up_2in1Details_by_match(matchId, 8, 3)
+            up_2in1Details_by_match(matchId, 3, 3)
+            summary["details"] += 1
+            did_work = True
+        else:
+            print("赔率变化详情已完成或无赔率记录，跳过: " + str(matchId))
+
+        if _should_update_enrichment(match_state, technical_f, textlive_f):
+            update_match_enrichment(matchId)
+            summary["enrichment"] += 1
+            did_work = True
+        else:
+            print("技术统计/事件无需更新，跳过: {0}, reason={1}".format(
+                matchId,
+                _enrichment_skip_reason(match_state, technical_f, textlive_f),
+            ))
+
+        if not did_work:
+            summary["skipped_idle"] += 1
+
+    print("比赛数据更新汇总: {0}".format(summary))
+    return summary
+
+
+def _is_pending_flag(value, pending_values=(0, 1)):
+    try:
+        return int(value) in pending_values
+    except Exception:
+        return True
+
+
+def _has_pending_2in1_details(schedule_id):
+    from utils import sql_util
+
+    rows = sql_util.select_rows(
+        """
+        SELECT 1
+        FROM lq_totalodds AS tot
+        LEFT JOIN lq_AsianOdds AS asian
+          ON asian.companyId=tot.companyId AND asian.matchId=tot.matchId
+        LEFT JOIN lq_schedule AS sche
+          ON sche.matchId=tot.matchId
+        WHERE sche.scheduleID={0}
+          AND sche.matchState>=-1
+          AND tot.companyId IN (3,8)
+          AND (
+            tot.finished_pre IN (0,1) OR tot.finished_gun IN (0,1)
+            OR asian.finished_pre IN (0,1) OR asian.finished_gun IN (0,1)
+          )
+        LIMIT 1
+        """.format(int(schedule_id))
+    )
+    return len(rows) > 0
+
+
+def _should_update_enrichment(match_state, technical_f, textlive_f):
+    return (
+        _is_terminal_match_state(match_state)
+        and (
+            _is_pending_flag(technical_f, pending_values=(ENRICHMENT_FLAG_PENDING, ENRICHMENT_FLAG_REFRESHABLE))
+            or _is_pending_flag(textlive_f, pending_values=(ENRICHMENT_FLAG_PENDING, ENRICHMENT_FLAG_REFRESHABLE))
+        )
+    )
+
+
+def _enrichment_skip_reason(match_state, technical_f, textlive_f):
+    if not _is_terminal_match_state(match_state):
+        return "not_finished"
+    if (
+            not _is_pending_flag(technical_f, pending_values=(ENRICHMENT_FLAG_PENDING, ENRICHMENT_FLAG_REFRESHABLE))
+            and not _is_pending_flag(textlive_f, pending_values=(ENRICHMENT_FLAG_PENDING, ENRICHMENT_FLAG_REFRESHABLE))):
+        return "already_done"
+    return "not_required"
 
 
 def _should_update_part_score(match_state, match_time, partscore_f=None, score_parts=None):
@@ -285,26 +388,47 @@ def update_league_info(league_id=None, version=None):
 
 def update_basic_info(
         league_id=None,
+        league_ids=None,
         version=None,
         limit=None,
         offset=0,
         update_roster=True,
         roster_missing_only=False,
         fetch_photos=False,
-        mark_legacy=True):
+        mark_legacy=True,
+        all_leagues=False):
     result = {"league_info": update_league_info(league_id=league_id, version=version)}
     if league_id is not None:
         result["team_info"] = update_team_info(league_id, version=version)
+    elif not all_leagues:
+        resolved_league_ids = _resolve_basic_info_league_ids(league_ids)
+        team_results = {}
+        for resolved_league_id in resolved_league_ids:
+            team_results[resolved_league_id] = update_team_info(resolved_league_id, version=version)
+        result["team_info"] = team_results
     else:
         result["team_info"] = update_all_team_info(limit=limit)
     if update_roster:
-        result["roster_info"] = update_roster_info(
-            league_id=league_id,
-            limit=limit,
-            offset=offset,
-            missing_only=roster_missing_only,
-            fetch_photos=fetch_photos,
-        )
+        if league_id is not None or all_leagues:
+            result["roster_info"] = update_roster_info(
+                league_id=league_id,
+                limit=limit,
+                offset=offset,
+                missing_only=roster_missing_only,
+                fetch_photos=fetch_photos,
+                all_leagues=all_leagues,
+            )
+        else:
+            roster_results = {}
+            for resolved_league_id in _resolve_basic_info_league_ids(league_ids):
+                roster_results[resolved_league_id] = update_roster_info(
+                    league_id=resolved_league_id,
+                    limit=limit,
+                    offset=offset,
+                    missing_only=roster_missing_only,
+                    fetch_photos=fetch_photos,
+                )
+            result["roster_info"] = roster_results
     result["maintenance"] = update_basic_information_maintenance(mark_legacy=mark_legacy)
     print("basketball basic information update finished: {0}".format(result))
     return result
@@ -353,11 +477,24 @@ def update_roster_info(
         offset=0,
         missing_only=False,
         fetch_photos=True,
-        league_id=None):
+        league_id=None,
+        league_ids=None,
+        all_leagues=False):
     from lq.service.roster import update_all_team_rosters, update_team_roster
 
     if team_id is not None:
         return update_team_roster(team_id, version=version, fetch_photos=fetch_photos)
+    if league_id is None and not all_leagues:
+        results = {}
+        for resolved_league_id in _resolve_basic_info_league_ids(league_ids):
+            results[resolved_league_id] = update_all_team_rosters(
+                limit=limit,
+                offset=offset,
+                missing_only=missing_only,
+                fetch_photos=fetch_photos,
+                league_id=resolved_league_id,
+            )
+        return results
     return update_all_team_rosters(
         limit=limit,
         offset=offset,
@@ -888,6 +1025,43 @@ def _resolve_recent_seasons(league_id, season_count=3):
     return seasons[:season_limit]
 
 
+def _resolve_enrichment_league_ids(league_ids=None):
+    if league_ids is None:
+        league_ids = REALTIME_ENRICHMENT_LEAGUE_IDS
+    if isinstance(league_ids, str):
+        league_ids = _parse_league_ids(league_ids)
+    return sorted({int(item) for item in league_ids if str(item).strip()})
+
+
+def _resolve_basic_info_league_ids(league_ids=None):
+    if league_ids is None:
+        league_ids = REALTIME_BASIC_INFO_LEAGUE_IDS
+    if isinstance(league_ids, str):
+        league_ids = _parse_league_ids(league_ids)
+    return sorted({int(item) for item in league_ids if str(item).strip()})
+
+
+def _parse_league_ids(value):
+    if value is None:
+        return []
+    return [
+        int(item.strip())
+        for item in str(value).split(",")
+        if item.strip()
+    ]
+
+
+def _league_recent_season_where(league_ids, season_count, sql_util):
+    clauses = []
+    for resolved_league_id in league_ids:
+        season_values = []
+        for recent_season in _resolve_recent_seasons(resolved_league_id, season_count=season_count):
+            season_values.extend(_season_values(recent_season))
+        quoted_seasons = ",".join("'{}'".format(sql_util.safe(value)) for value in sorted(set(season_values)))
+        clauses.append("(leagueId={0} and matchSeason in ({1}))".format(resolved_league_id, quoted_seasons))
+    return "({})".format(" or ".join(clauses)) if clauses else None
+
+
 def _ensure_recent_season_or_error(league_id, season, recent_seasons=None):
     recent = recent_seasons or _resolve_recent_seasons(league_id)
     requested_values = set(_season_values(season))
@@ -932,23 +1106,23 @@ def _include_finished(text):
     return any(word in lowered for word in ["包含完场", "包括完场", "全量", "include finished", "all finished"])
 
 
-def update_score():
+def update_score(lookback_days=14):
     from lq.service.partscore import upPartscore
 
-    upPartscore()
+    upPartscore(lookback_days=lookback_days)
 
 
-def update_odds():
+def update_odds(lookback_days=14, until_days=1):
     from lq.service.lqodds import LqOddsService
 
-    LqOddsService.upOdds()
+    LqOddsService.upOdds(lookback_days=lookback_days, until_days=until_days)
 
 
-def update_details():
+def update_details(lookback_days=14, until_days=1):
     from lq.service.lqodds import LqOddsService
 
-    LqOddsService.up_2in1Details_byCid(8, 3)
-    LqOddsService.up_2in1Details_byCid(3, 3)
+    LqOddsService.up_2in1Details_byCid(8, 3, lookback_days=lookback_days, until_days=until_days)
+    LqOddsService.up_2in1Details_byCid(3, 3, lookback_days=lookback_days, until_days=until_days)
 
 
 def _is_terminal_match_state(match_state):
@@ -1067,11 +1241,13 @@ def update_match_enrichment(schedule_id, force=False):
 
 def update_enrichment_pending(
         league_id=None,
+        league_ids=None,
         season=None,
         season_count=None,
         start_match_time=None,
         until_match_time=None,
-        limit=None):
+        limit=None,
+        all_leagues=False):
     from utils import sql_util
 
     columns = {row["Field"] for row in sql_util.select_dicts("SHOW COLUMNS FROM `lq_schedule`")}
@@ -1116,6 +1292,13 @@ def update_enrichment_pending(
         where.append("matchTime <= '{}'".format(sql_util.safe(str(until_match_time))))
     if league_id is not None:
         where.insert(0, "leagueId={}".format(int(league_id)))
+        resolved_league_ids = [int(league_id)]
+    elif not all_leagues:
+        resolved_league_ids = _resolve_enrichment_league_ids(league_ids)
+        if resolved_league_ids:
+            where.insert(0, "leagueId in({})".format(",".join(str(item) for item in resolved_league_ids)))
+    else:
+        resolved_league_ids = []
     if season is not None:
         season_values = _season_values(season)
         quoted_seasons = ",".join("'{}'".format(sql_util.safe(value)) for value in season_values)
@@ -1126,6 +1309,10 @@ def update_enrichment_pending(
             season_values.extend(_season_values(recent_season))
         quoted_seasons = ",".join("'{}'".format(sql_util.safe(value)) for value in sorted(set(season_values)))
         where.append("matchSeason in ({})".format(quoted_seasons))
+    elif resolved_league_ids and season_count is not None:
+        season_where = _league_recent_season_where(resolved_league_ids, season_count, sql_util)
+        if season_where is not None:
+            where.append(season_where)
     sql = (
         "SELECT scheduleID FROM lq_schedule WHERE {where} "
         "ORDER BY matchTime ASC"
@@ -1136,13 +1323,13 @@ def update_enrichment_pending(
     rows = sql_util.select_rows(sql)
     schedule_ids = [row[0] for row in rows]
     if len(schedule_ids) == 0:
-        print("no pending enrichment matches: league_id={0}, season={1}, season_count={2}, start_match_time={3}, until_match_time={4}".format(
-            league_id, season, season_count, start_match_time, until_match_time
+        print("no pending enrichment matches: league_ids={0}, season={1}, season_count={2}, start_match_time={3}, until_match_time={4}, all_leagues={5}".format(
+            resolved_league_ids, season, season_count, start_match_time, until_match_time, all_leagues
         ))
         return []
 
-    print("start pending enrichment update: league_id={0}, season={1}, season_count={2}, count={3}, start_match_time={4}, until_match_time={5}".format(
-        league_id, season, season_count, len(schedule_ids), start_match_time, until_match_time
+    print("start pending enrichment update: league_ids={0}, season={1}, season_count={2}, count={3}, start_match_time={4}, until_match_time={5}, all_leagues={6}".format(
+        resolved_league_ids, season, season_count, len(schedule_ids), start_match_time, until_match_time, all_leagues
     ))
     for schedule_id in schedule_ids:
         update_match_enrichment(schedule_id)
@@ -1150,20 +1337,23 @@ def update_enrichment_pending(
     return schedule_ids
 
 
-def run_all(league_id=None, season=None, season_count=None, start_match_time=None, until_match_time=None, limit=None):
+def run_all(
+        league_id=None,
+        season=None,
+        season_count=None,
+        start_match_time=None,
+        until_match_time=None,
+        limit=None,
+        score_lookback_days=14,
+        odds_lookback_days=14,
+        odds_until_days=1,
+        details_lookback_days=14,
+        details_until_days=1):
     update_schedule_js()
     update_schedule()
-    update_score()
-    update_odds()
-    update_details()
-    update_enrichment_pending(
-        league_id=league_id,
-        season=season,
-        season_count=season_count,
-        start_match_time=start_match_time,
-        until_match_time=until_match_time,
-        limit=limit,
-    )
+    update_score(lookback_days=score_lookback_days)
+    update_odds(lookback_days=odds_lookback_days, until_days=odds_until_days)
+    update_details(lookback_days=details_lookback_days, until_days=details_until_days)
 
 
 def main():
@@ -1199,6 +1389,15 @@ def main():
     )
     parser.add_argument("request_text", nargs="*", help="Natural-language request for the request stage.")
     parser.add_argument("--league-id", type=int, help="Titan basketball league/SclassID.")
+    parser.add_argument(
+        "--league-ids",
+        help="Comma-separated Titan basketball league/SclassID list, for example 2,5,7.",
+    )
+    parser.add_argument(
+        "--all-leagues",
+        action="store_true",
+        help="For enrichment-pending, ignore realtime league defaults and scan all leagues.",
+    )
     parser.add_argument("--team-id", type=int, help="Titan basketball TeamID.")
     parser.add_argument("--version", help="Titan team-info js version, for example 2026072009.")
     parser.add_argument("--season", help="Season, for example 2026 or 2025-2026.")
@@ -1285,6 +1484,36 @@ def main():
     parser.add_argument("--start-time", help="For league data updates, only select matches at or after this matchTime.")
     parser.add_argument("--until-time", help="For score/odds/detail data updates, only select matches at or before this matchTime.")
     parser.add_argument(
+        "--score-lookback-days",
+        type=int,
+        default=14,
+        help="For score updates, only look back this many days. Default: 14.",
+    )
+    parser.add_argument(
+        "--odds-lookback-days",
+        type=int,
+        default=14,
+        help="For odds updates, only look back this many days. Default: 14.",
+    )
+    parser.add_argument(
+        "--odds-until-days",
+        type=int,
+        default=1,
+        help="For odds updates, select matches before now plus this many days. Default: 1.",
+    )
+    parser.add_argument(
+        "--details-lookback-days",
+        type=int,
+        default=14,
+        help="For odds detail updates, only look back this many days. Default: 14.",
+    )
+    parser.add_argument(
+        "--details-until-days",
+        type=int,
+        default=1,
+        help="For odds detail updates, select matches before now plus this many days. Default: 1.",
+    )
+    parser.add_argument(
         "--until-days",
         type=int,
         default=3,
@@ -1312,17 +1541,22 @@ def main():
             start_match_time=args.start_time,
             until_match_time=args.until_time,
             limit=args.limit,
+            score_lookback_days=args.score_lookback_days,
+            odds_lookback_days=args.odds_lookback_days,
+            odds_until_days=args.odds_until_days,
+            details_lookback_days=args.details_lookback_days,
+            details_until_days=args.details_until_days,
         )
     elif args.stage == "schedule-js":
         update_schedule_js()
     elif args.stage == "schedule":
         update_schedule()
     elif args.stage == "score":
-        update_score()
+        update_score(lookback_days=args.score_lookback_days)
     elif args.stage == "odds":
-        update_odds()
+        update_odds(lookback_days=args.odds_lookback_days, until_days=args.odds_until_days)
     elif args.stage == "details":
-        update_details()
+        update_details(lookback_days=args.details_lookback_days, until_days=args.details_until_days)
     elif args.stage == "technical":
         if args.schedule_id is None:
             parser.error("technical requires --schedule-id")
@@ -1340,6 +1574,7 @@ def main():
     elif args.stage == "basic-info":
         update_basic_info(
             args.league_id,
+            league_ids=args.league_ids,
             version=args.version,
             limit=args.limit,
             offset=args.offset,
@@ -1347,6 +1582,7 @@ def main():
             roster_missing_only=args.missing_only,
             fetch_photos=args.with_photos,
             mark_legacy=not args.skip_legacy,
+            all_leagues=args.all_leagues,
         )
     elif args.stage == "roster-info":
         update_roster_info(
@@ -1356,6 +1592,9 @@ def main():
             offset=args.offset,
             missing_only=args.missing_only,
             fetch_photos=not args.skip_photo,
+            league_id=args.league_id,
+            league_ids=args.league_ids,
+            all_leagues=args.all_leagues,
         )
     elif args.stage == "photo-info":
         update_player_photo_info(
@@ -1375,11 +1614,13 @@ def main():
     elif args.stage == "enrichment-pending":
         update_enrichment_pending(
             league_id=args.league_id,
+            league_ids=args.league_ids,
             season=args.season,
             season_count=args.season_count,
             start_match_time=args.start_time,
             until_match_time=args.until_time,
             limit=args.limit,
+            all_leagues=args.all_leagues,
         )
     elif args.stage == "schedule-local":
         from lq.service.schedulejs import upScheJsLocal
@@ -1472,45 +1713,22 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         main()
     else:
-        from lq.service.schedulejs import upScheJsLocal
+        # Default direct-run path: update match state, score, odds and odds detail data.
+        # update_schedule_js()
+        # update_schedule()
+        update_score(lookback_days=14)
+        update_odds(lookback_days=14, until_days=1)
+        update_details(lookback_days=14, until_days=1)
 
-        # Daily update path:
-        #   update_schedule_js()  # Fetch Titan schedule JS files.
-        #   update_schedule()     # Parse schedule JS files into lq_schedule.
-        #   update_score()        # Update live/final scores and fill missing period scores.
-        #
-        # Basic information task examples:
-        #   update_basic_info()  # league + team + roster/player profile + legacy/status summary, photos skipped.
-        #   update_basic_info(league_id=1)
-        #   update_basic_info(update_roster=False)
-        #   update_basic_info(fetch_photos=True)
-        #   update_roster_info(team_id=2)
-        #   update_roster_info(missing_only=True, fetch_photos=False)
-        #
-        # CLI examples:
-        #   venv/bin/python lq_update.py basic-info
-        #   venv/bin/python lq_update.py basic-info --skip-roster
-        #   venv/bin/python lq_update.py basic-info --with-photos
-        #   venv/bin/python lq_update.py league-info
-        #   venv/bin/python lq_update.py team-info --league-id 1
-        #   venv/bin/python lq_update.py roster-info --team-id 2
-        #   venv/bin/python lq_update.py roster-info --missing-only --skip-photo
-        #   venv/bin/python lq_update.py photo-info
+        # all_leagues=True
 
-        update_schedule_js()
-        # upScheJsLocal()
-        update_schedule()
-        update_score()
-        update_odds()
-        update_details()
-        update_enrichment_pending(league_id=2, season_count=3)
-        
-        # diagnose_titan_team_info_request(league_id=1)
-        # diagnose_titan_team_info_request(league_id=1, trust_env=False)
+        # Optional enrichment, run when you want technical stats and text-live events.
 
+       
+        # update_enrichment_pending()
+        # update_enrichment_pending(league_id=2, season_count=3)
+         # update_enrichment_pending(all_leagues=True)
 
-        # from lq_update import update_basic_info, update_roster_info
-
-        # update_basic_info()
-        # update_roster_info(team_id=2)
-        # update_roster_info(missing_only=True, fetch_photos=False)
+        # Optional league/team/player basic information tasks.
+        update_basic_info(all_leagues=True)
+        update_roster_info(all_leagues=True,missing_only=True, fetch_photos=False)

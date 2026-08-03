@@ -11,13 +11,13 @@ from utils.dateUtil import getNowTime
 
 
 # 五、完场和正在进行比赛，小节比分信息；
-def upPartscore():
+def upPartscore(lookback_days=14):
     # 比赛开始时间小于等于当前时间 且 比分采集状态为0 的比赛
     # current_time = "'" + CommonUtil.gettime() + "'"
     fileUtil.logLine(lqconfig_qt.update_log, ['开始篮球更新小节比分'])
     now = datetime.now()
     time0 = "'" + now.strftime("%Y-%m-%d %H:%M:%S") + "'"
-    time1 = "'" + (now + timedelta(days=-60)).strftime("%Y-%m-%d %H:%M:%S") + "'"
+    time1 = "'" + (now + timedelta(days=-int(lookback_days))).strftime("%Y-%m-%d %H:%M:%S") + "'"
     # time1 = "'2008-01-01 00:00'"
     # 采集任务未完成，且比赛状态完场或进行中，且比赛日期小于当前时间
     incomplete_finished_score = (
@@ -31,7 +31,7 @@ def upPartscore():
     # print(sql)
     matchs = sql_util.select(sql)
     size = len(matchs)
-    print("开始更新小节比分：" + str(size))
+    print("开始更新小节比分：{0}, lookback_days={1}".format(size, lookback_days))
     for match in matchs:
         matchstate = match[2]
         condition = {'scheduleID': match[0]}
@@ -62,7 +62,6 @@ def upPartScore(leagueID, seasons):
         partdDct = get_part_score(matchID)
         sql_util.upData('lq_schedule', partdDct, {'scheduleID': matchID})
     print("小节比分更新成功；" + "联赛：" + str(leagueID) + "赛季：" + ",".join(seasons))
-
 
 
 
