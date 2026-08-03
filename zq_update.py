@@ -608,11 +608,13 @@ def main():
             "schedule-league-season",
             "league-season-data",
             "request",
+            "bootstrap-live-match",
         ],
         help="Task stage to run. Default: all.",
     )
     parser.add_argument("request_text", nargs="*", help="Natural-language request for the request stage.")
     parser.add_argument("--league-id", type=int, help="Titan football league/SclassID.")
+    parser.add_argument("--schedule-id", type=int, help="Titan football schedule ID for one verified live-match bootstrap.")
     parser.add_argument("--season", help="Season, for example 2026 or 2025-2026.")
     parser.add_argument("--league-type", type=int, choices=[1, 2], help="Titan football league type: 1=league, 2=cup.")
     parser.add_argument("--if-have-sub", type=int, choices=[0, 1], help="Titan football sub-league flag.")
@@ -687,6 +689,13 @@ def main():
             until_days=args.until_days,
         )
         print(json.dumps({**plan, "executed": bool(args.execute)}, ensure_ascii=False, indent=2))
+    elif args.stage == "bootstrap-live-match":
+        if args.schedule_id is None:
+            parser.error("bootstrap-live-match requires --schedule-id")
+        from zq.live_match_bootstrap import run_live_match_bootstrap
+
+        plan = run_live_match_bootstrap(args.schedule_id, execute=args.execute)
+        print(json.dumps(plan, ensure_ascii=False, indent=2, default=str))
 
     # TotalStZq.update_half_st('2026-04-20 00:00:00')
     # TotalStZq.update_st('2026-04-20 00:00:00')
