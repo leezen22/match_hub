@@ -23,23 +23,36 @@ from utils.dateUtil import getNowTime
 DictRow = Dict[str, Any]
 
 
+def _schedule_id_sql_filter(schedule_ids, column):
+    if schedule_ids is None:
+        return ""
+    normalized = sorted({int(schedule_id) for schedule_id in schedule_ids})
+    if not normalized or any(schedule_id <= 0 for schedule_id in normalized):
+        raise ValueError("schedule_ids must contain positive integers")
+    return " and {0} in ({1})".format(
+        column,
+        ",".join(str(schedule_id) for schedule_id in normalized),
+    )
+
+
 class LqOddsService(object):
 
     def __init__(self):
         pass
 
     @staticmethod
-    def upOdds(lookback_days=14, until_days=1):
+    def upOdds(lookback_days=14, until_days=1, schedule_ids=None):
         fileUtil.logLine(lqconfig_qt.update_log, ['开始更新篮球初盘/即时盘'])
         print(getNowTime() + " 开始更新篮球初盘/即时盘")
         now = datetime.now()
         time1 = "'" + (now + timedelta(days=-int(lookback_days))).strftime("%Y-%m-%d %H:%M:%S") + "'"
         time2 = "'" + (now + timedelta(days=int(until_days))).strftime("%Y-%m-%d %H:%M:%S") + "'"
         # and leagueID in (1, 2, 5, 7, 14, 15, 19, 25, 20, 28, 22)
+        schedule_filter = _schedule_id_sql_filter(schedule_ids, "scheduleID")
         asiansql = "SELECT scheduleID, leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
-                   " WHERE asianodds_f in(0,1,4) and matchState>=-1 and MatchTime >= {0} and MatchTime < {1} order by matchTime ASC ".format(time1, time2)
+                   " WHERE asianodds_f in(0,1,4) and matchState>=-1 and MatchTime >= {0} and MatchTime < {1}{2} order by matchTime ASC ".format(time1, time2, schedule_filter)
         totalsql = "SELECT scheduleID,leagueId,matchState,matchTime,partscore_f,asianodds_f,totalodds_f FROM `lq_schedule`" \
-                   " WHERE totalodds_f in(0,1,4) and matchState>=-1 and matchTime >= {0} and matchTime < {1} order by matchTime ASC ".format(time1, time2)
+                   " WHERE totalodds_f in(0,1,4) and matchState>=-1 and matchTime >= {0} and matchTime < {1}{2} order by matchTime ASC ".format(time1, time2, schedule_filter)
 
         # totalsql= {}
         asianMatchList = sql_util.select(asiansql)
@@ -196,11 +209,12 @@ class LqOddsService(object):
 
     # scope 1 赛前 2赛中 3赛前+赛中
     @staticmethod
-    def up_2in1Details_byCid(companyId, scope, lookback_days=14, until_days=1):
+    def up_2in1Details_byCid(companyId, scope, lookback_days=14, until_days=1, schedule_ids=None):
         # scope = 3
         now = datetime.now()
         time1 = (now + timedelta(days=-int(lookback_days))).strftime("%Y-%m-%d %H:%M:%S")
         time2 = (now + timedelta(days=int(until_days))).strftime("%Y-%m-%d %H:%M:%S")
+        schedule_filter = _schedule_id_sql_filter(schedule_ids, "sche.scheduleID")
         sql = """SELECT sche.matchId,sche.scheduleId,sche.matchState,sche.matchTime,
             tot.companyId,
             tot.oddsId as total_oddsId ,
@@ -220,9 +234,9 @@ class LqOddsService(object):
                 or asian.finished_pre in(0,1,4) or asian.finished_gun in(0,1,4)
             )
             and sche.matchTime>='{1}'
-            and sche.matchTime<'{2}'
+            and sche.matchTime<'{2}'{3}
             and sche.matchState >=-1 order by sche.matchtime ASC
-        """.format(companyId, time1, time2)
+        """.format(companyId, time1, time2, schedule_filter)
         results = cast(Tuple[Tuple[Any, ...], ...], LqAsianOddsDao.select(sql))
         size = len(results)
         print("开始更新篮球2合1赔率变化: companyId={0}, count={1}, lookback_days={2}, until_days={3}".format(
@@ -281,7 +295,6 @@ class LqOddsService(object):
             for t in threads:
                 t.join()
             size = size - 1
-
     @staticmethod
     def up_europe_byMatch(matchId, scheduleId, matchState, eurOdds_f, scope):
         crawler = EuropeOddsCrawler(matchId, scheduleId, matchState, eurOdds_f)

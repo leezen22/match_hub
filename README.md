@@ -19,6 +19,8 @@ Run one update stage:
 .\venv\Scripts\python.exe lq_update.py score
 .\venv\Scripts\python.exe lq_update.py odds
 .\venv\Scripts\python.exe lq_update.py details
+.\venv\Scripts\python.exe lq_update.py odds --schedule-ids 705152,705153
+.\venv\Scripts\python.exe lq_update.py details --schedule-ids 705152,705153
 .\venv\Scripts\python.exe lq_update.py enrichment --schedule-id 705106
 .\venv\Scripts\python.exe lq_update.py enrichment-pending --league-id 406 --season-count 3 --start-time "2026-07-01 00:00:00" --until-time "2026-07-02 00:00:00" --limit 20
 
@@ -27,6 +29,12 @@ Run one update stage:
 .\venv\Scripts\python.exe zq_update.py score
 .\venv\Scripts\python.exe zq_update.py odds --start-time "2026-05-05 00:00:00"
 ```
+
+`--schedule-ids` is an optional exact-match scope for Basketball `odds` and
+`details`. System callers should pass only schedule IDs whose league, home
+team, and away team identity has already been verified against the current
+source batch. When omitted, the existing operator-facing time-window behavior
+is unchanged. Invalid or explicitly empty scopes fail closed.
 
 Run a narrow basketball schedule refresh for one Titan league/cup season:
 

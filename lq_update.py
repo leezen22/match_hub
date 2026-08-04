@@ -1112,17 +1112,37 @@ def update_score(lookback_days=14):
     upPartscore(lookback_days=lookback_days)
 
 
-def update_odds(lookback_days=14, until_days=1):
+def update_odds(lookback_days=14, until_days=1, schedule_ids=None):
     from lq.service.lqodds import LqOddsService
 
-    LqOddsService.upOdds(lookback_days=lookback_days, until_days=until_days)
+    LqOddsService.upOdds(
+        lookback_days=lookback_days,
+        until_days=until_days,
+        schedule_ids=schedule_ids,
+    )
 
 
-def update_details(lookback_days=14, until_days=1):
+def update_details(lookback_days=14, until_days=1, schedule_ids=None):
     from lq.service.lqodds import LqOddsService
 
-    LqOddsService.up_2in1Details_byCid(8, 3, lookback_days=lookback_days, until_days=until_days)
-    LqOddsService.up_2in1Details_byCid(3, 3, lookback_days=lookback_days, until_days=until_days)
+    LqOddsService.up_2in1Details_byCid(
+        8, 3, lookback_days=lookback_days, until_days=until_days, schedule_ids=schedule_ids
+    )
+    LqOddsService.up_2in1Details_byCid(
+        3, 3, lookback_days=lookback_days, until_days=until_days, schedule_ids=schedule_ids
+    )
+
+
+def _parse_schedule_ids(value):
+    if value is None:
+        return None
+    values = []
+    for item in str(value).split(","):
+        text = item.strip()
+        if not text or not text.isdigit() or int(text) <= 0:
+            raise ValueError("schedule ids must be comma-separated positive integers")
+        values.append(int(text))
+    return sorted(set(values))
 
 
 def _is_terminal_match_state(match_state):
@@ -1480,6 +1500,10 @@ def main():
         help="For photo-info, stop early when a batch failure ratio reaches this value. Default: 0.5.",
     )
     parser.add_argument("--schedule-id", type=int, help="Titan basketball scheduleID for single-match enrichment tasks.")
+    parser.add_argument(
+        "--schedule-ids",
+        help="Comma-separated exact-identity-verified scheduleIDs for bounded odds/details updates.",
+    )
     parser.add_argument("--force", action="store_true", help="For single-match enrichment tasks, ignore finished flags and collect again.")
     parser.add_argument("--start-time", help="For league data updates, only select matches at or after this matchTime.")
     parser.add_argument("--until-time", help="For score/odds/detail data updates, only select matches at or before this matchTime.")
@@ -1554,9 +1578,17 @@ def main():
     elif args.stage == "score":
         update_score(lookback_days=args.score_lookback_days)
     elif args.stage == "odds":
-        update_odds(lookback_days=args.odds_lookback_days, until_days=args.odds_until_days)
+        update_odds(
+            lookback_days=args.odds_lookback_days,
+            until_days=args.odds_until_days,
+            schedule_ids=_parse_schedule_ids(args.schedule_ids),
+        )
     elif args.stage == "details":
-        update_details(lookback_days=args.details_lookback_days, until_days=args.details_until_days)
+        update_details(
+            lookback_days=args.details_lookback_days,
+            until_days=args.details_until_days,
+            schedule_ids=_parse_schedule_ids(args.schedule_ids),
+        )
     elif args.stage == "technical":
         if args.schedule_id is None:
             parser.error("technical requires --schedule-id")
