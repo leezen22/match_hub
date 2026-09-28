@@ -9,12 +9,13 @@ from lq.service.schedulejs import (
     SCHEDULE_CRAWLER_STATE_ACTIVE,
     SCHEDULE_CRAWLER_STATE_FINISHED,
     _schedule_key_from_url,
+    _season_end_year,
     mark_schedule_js_persisted,
 )
 from utils import fileUtil, sql_util, js2pyUtil
 from utils.dateUtil import getNowTime
 
-PRESEASON_REGULAR_SCHEDULE_FINISH_GRACE_DAYS = 7
+PRESEASON_REGULAR_SCHEDULE_FINISH_GRACE_DAYS = 14
 PLAYOFF_SCHEDULE_FINISH_GRACE_DAYS = 14
 
 
@@ -98,7 +99,12 @@ def upScheduleByFile(file, flag, updateTime_local):
 
 
 def _up_schedule_crawler_state(file, matchlist, kind_type, match_kind):
-    state = _resolve_schedule_crawler_state(matchlist, kind_type, match_kind)
+    state = _resolve_schedule_crawler_state(
+        matchlist,
+        kind_type,
+        match_kind,
+        season_expired=_is_file_season_label_expired(file),
+    )
     source_time = _schedule_file_source_time(file)
     if source_time is None:
         print("schedule JS persisted marker skipped, source timestamp unavailable: {0}".format(file))
@@ -145,7 +151,9 @@ def _schedule_file_source_time(file):
         return None
 
 
-def _resolve_schedule_crawler_state(matchlist, kind_type, match_kind):
+def _resolve_schedule_crawler_state(matchlist, kind_type, match_kind, season_expired=False):
+    if season_expired:
+        return SCHEDULE_CRAWLER_STATE_FINISHED
     if not matchlist:
         return SCHEDULE_CRAWLER_STATE_ACTIVE
     if any(match.get('matchState') not in (-1, -4) for match in matchlist):
@@ -153,6 +161,13 @@ def _resolve_schedule_crawler_state(matchlist, kind_type, match_kind):
     if not _is_schedule_past_finish_grace(matchlist, match_kind):
         return SCHEDULE_CRAWLER_STATE_ACTIVE
     return SCHEDULE_CRAWLER_STATE_FINISHED
+
+
+def _is_file_season_label_expired(file):
+    season_end_year = _season_end_year(os.path.basename(os.path.dirname(file)))
+    if season_end_year is None:
+        return False
+    return season_end_year < datetime.now().year
 
 
 def _is_schedule_past_finish_grace(matchlist, match_kind):

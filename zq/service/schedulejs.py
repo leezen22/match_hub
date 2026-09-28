@@ -155,6 +155,7 @@ def upActiveScheJS(league_ids=None, all_leagues=False, limit=None, season_count=
 
 def normalize_historical_schedule_states(league_ids=None, all_leagues=False, keep_recent_seasons=3, now=None):
     _ensure_schetask_tracking_columns()
+    now = now or datetime.now()
     rows = _select_schetask_rows_for_state_maintenance(league_ids=league_ids, all_leagues=all_leagues)
     recent_seasons = _recent_schetask_seasons_by_league(
         sorted({int(row['leagueId']) for row in rows if row.get('leagueId') is not None}),
@@ -163,21 +164,28 @@ def normalize_historical_schedule_states(league_ids=None, all_leagues=False, kee
     summary = {
         "scanned": 0,
         "closed": 0,
+        "closed_finished_recent_season": 0,
         "closed_without_local_schedule": 0,
         "kept_active": 0,
         "skipped_recent": 0,
     }
+    season_stats = _load_season_completion_stats()
     closed_keys = []
     for row in rows:
         summary["scanned"] += 1
-        allowed_recent = recent_seasons.get(int(row['leagueId']), set())
-        if str(row.get('matchSeason')) in allowed_recent:
-            summary["skipped_recent"] += 1
-            continue
         # A work file is a downloaded snapshot waiting for update_schedule().
         # Never close its task during maintenance, even when its season is old.
         if _schedule_work_file_exists(row):
             summary["kept_active"] += 1
+            continue
+        allowed_recent = recent_seasons.get(int(row['leagueId']), set())
+        if str(row.get('matchSeason')) in allowed_recent:
+            if _is_schedule_label_expired(row, now) or _is_schedule_season_locally_finished(row, now, season_stats):
+                closed_keys.append(row['scheKey'])
+                summary["closed"] += 1
+                summary["closed_finished_recent_season"] += 1
+                continue
+            summary["skipped_recent"] += 1
             continue
         closed_keys.append(row['scheKey'])
         summary["closed"] += 1
@@ -603,6 +611,8 @@ def _schedule_url_from_file(file_path):
 
 
 def _resolve_schedule_state(matches, file_path):
+    if _is_file_season_label_expired(file_path):
+        return SCHETASK_STATE_FINISHED
     if not matches:
         return SCHETASK_STATE_ACTIVE
     if any(match.get('MatchState') not in (-1, -10) for match in matches):
@@ -614,6 +624,13 @@ def _resolve_schedule_state(matches, file_path):
     if max_match_time > datetime.now() - timedelta(days=grace_days):
         return SCHETASK_STATE_ACTIVE
     return SCHETASK_STATE_FINISHED
+
+
+def _is_file_season_label_expired(file_path):
+    season_end_year = _season_end_year(Path(file_path).parent.name)
+    if season_end_year is None:
+        return False
+    return season_end_year < datetime.now().year
 
 
 def _max_match_time(matches):
@@ -646,10 +663,10 @@ def _select_active_schedule_js_rows(league_ids=None, all_leagues=False, limit=No
         "persistedSourceLastUpdateTime FROM zq_scheTask WHERE {where} "
         "ORDER BY lastFetchTime ASC, updateTime ASC".format(where=" AND ".join(where))
     )
-    rows = [_normalize_active_schedule_row(row) for row in rows]
     rows = _filter_recent_schedule_rows(rows, season_count=season_count)
     rows = _close_locally_finished_schedule_rows(rows, now)
     selected = [row for row in rows if _is_schedule_js_due(row, now)]
+    selected = [_normalize_active_schedule_row(row) for row in selected]
     if limit is not None:
         selected = selected[:int(limit)]
     return selected
@@ -700,10 +717,16 @@ def _filter_recent_schedule_rows(rows, season_count=3):
         return []
     league_ids = sorted({int(row['leagueId']) for row in rows if row.get('leagueId') is not None})
     recent_seasons = _recent_schetask_seasons_by_league(league_ids, season_limit)
-    return [
-        row for row in rows
-        if str(row.get('matchSeason')) in recent_seasons.get(int(row['leagueId']), set())
-    ]
+    filtered = []
+    closed_keys = []
+    for row in rows:
+        allowed_seasons = recent_seasons.get(int(row['leagueId']), set())
+        if str(row.get('matchSeason')) in allowed_seasons:
+            filtered.append(row)
+        elif not _schedule_work_file_exists(row):
+            closed_keys.append(row['scheKey'])
+    _batch_mark_schedule_states(closed_keys, SCHETASK_STATE_FINISHED)
+    return filtered
 
 
 def _recent_schetask_seasons_by_league(league_ids, season_count):
@@ -739,10 +762,14 @@ def _season_sort_key(season):
 
 def _close_locally_finished_schedule_rows(rows, now):
     schedule_stats = _load_schedule_completion_stats()
+    season_stats = _load_season_completion_stats()
     active_rows = []
     closed_keys = []
     for row in rows:
-        if _is_schedule_row_locally_finished(row, now, schedule_stats):
+        if (
+                _is_schedule_label_expired(row, now)
+                or _is_schedule_season_locally_finished(row, now, season_stats)
+                or _is_schedule_row_locally_finished(row, now, schedule_stats)):
             closed_keys.append(row['scheKey'])
             continue
         active_rows.append(row)
@@ -779,6 +806,65 @@ def _is_schedule_row_locally_finished(row, now, schedule_stats=None):
     if int(terminal_count or 0) < int(total):
         return False
     return max_match_time <= now - timedelta(days=_schedule_finish_grace_days(row.get('fileName')))
+
+
+def _is_schedule_season_locally_finished(row, now, season_stats=None):
+    if _schedule_work_file_exists(row):
+        return False
+    stats = None
+    key = (int(row['leagueId']), str(row['matchSeason']))
+    if season_stats is not None:
+        stats = season_stats.get(key)
+    if stats is None:
+        stats = _query_season_completion_stats(row)
+    total, terminal_count, max_match_time = stats
+    if not total or max_match_time is None:
+        return False
+    if int(terminal_count or 0) < int(total):
+        return False
+    return max_match_time <= now - timedelta(days=_schedule_finish_grace_days(row.get('fileName')))
+
+
+def _is_schedule_label_expired(row, now):
+    if _schedule_work_file_exists(row):
+        return False
+    season_end_year = _season_end_year(row.get('matchSeason'))
+    if season_end_year is None:
+        return False
+    return season_end_year < int(now.year)
+
+
+def _season_end_year(season):
+    values = []
+    for value in str(season or '').replace('/', '-').split('-'):
+        value = value.strip()
+        if value.isdigit():
+            year = int(value)
+            values.append(year + 2000 if year < 100 else year)
+    return max(values) if values else None
+
+
+def _query_season_completion_stats(row):
+    rows = sql_util.select_rows(
+        "SELECT COUNT(*),SUM(CASE WHEN matchState IN (-1,-10) THEN 1 ELSE 0 END),MAX(matchTime) "
+        "FROM zq_schedule WHERE leagueID={0} AND matchSeason='{1}'".format(
+            int(row['leagueId']),
+            sql_util.safe(str(row['matchSeason'])),
+        )
+    )
+    return rows[0] if rows else (0, 0, None)
+
+
+def _load_season_completion_stats():
+    rows = sql_util.select_rows(
+        "SELECT leagueID,matchSeason,COUNT(*),"
+        "SUM(CASE WHEN matchState IN (-1,-10) THEN 1 ELSE 0 END),MAX(matchTime) "
+        "FROM zq_schedule GROUP BY leagueID,matchSeason"
+    )
+    return {
+        (int(league_id), str(season)): (total, terminal_count, max_match_time)
+        for league_id, season, total, terminal_count, max_match_time in rows
+    }
 
 
 def _schedule_stats_key(row):

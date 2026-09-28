@@ -61,6 +61,92 @@ class BasketballScheduleSummaryTest(unittest.TestCase):
 
         self.assertEqual(result, {"selected": 1, "success": 0, "failed": 1})
 
+    def test_recent_finished_season_rows_are_closed(self):
+        now = datetime(2026, 9, 28, 12, 0, 0)
+        row = {"scheKey": "2#26#l2_2.js", "leagueId": 2, "matchSeason": "26", "fileName": "l2_2.js"}
+        season_stats = {(2, "26"): (100, 100, now - timedelta(days=20), 1)}
+
+        with patch.object(schedulejs, "_schedule_work_file_exists", return_value=False), patch.object(
+            schedulejs, "_load_season_completion_stats", return_value=season_stats
+        ), patch.object(schedulejs, "_batch_mark_schedule_states") as mark_states:
+            rows = schedulejs._close_locally_finished_schedule_rows([row], now)
+
+        self.assertEqual(rows, [])
+        mark_states.assert_called_once_with(["2#26#l2_2.js"], schedulejs.SCHEDULE_CRAWLER_STATE_FINISHED)
+
+    def test_recent_unfinished_season_rows_stay_active(self):
+        now = datetime(2026, 9, 28, 12, 0, 0)
+        row = {"scheKey": "2#26#l2_2.js", "leagueId": 2, "matchSeason": "26", "fileName": "l2_2.js"}
+        season_stats = {(2, "26"): (100, 99, now - timedelta(days=20), 1)}
+
+        with patch.object(schedulejs, "_schedule_work_file_exists", return_value=False), patch.object(
+            schedulejs, "_load_season_completion_stats", return_value=season_stats
+        ), patch.object(schedulejs, "_is_schedule_row_locally_finished", return_value=False), patch.object(
+            schedulejs, "_batch_mark_schedule_states"
+        ) as mark_states:
+            rows = schedulejs._close_locally_finished_schedule_rows([row], now)
+
+        self.assertEqual(rows, [row])
+        mark_states.assert_called_once_with([], schedulejs.SCHEDULE_CRAWLER_STATE_FINISHED)
+
+    def test_expired_recent_season_rows_are_closed_by_season_label(self):
+        now = datetime(2026, 9, 28, 12, 0, 0)
+        row = {"scheKey": "477#25#l477_2.js", "leagueId": 477, "matchSeason": "25", "fileName": "l477_2.js"}
+        season_stats = {(477, "25"): (896, 868, now + timedelta(days=10), 1)}
+
+        with patch.object(schedulejs, "_schedule_work_file_exists", return_value=False), patch.object(
+            schedulejs, "_load_season_completion_stats", return_value=season_stats
+        ), patch.object(schedulejs, "_load_schedule_scope_completion_stats", return_value={}), patch.object(
+            schedulejs, "_batch_mark_schedule_states"
+        ) as mark_states:
+            rows = schedulejs._close_locally_finished_schedule_rows([row], now)
+
+        self.assertEqual(rows, [])
+        mark_states.assert_called_once_with(["477#25#l477_2.js"], schedulejs.SCHEDULE_CRAWLER_STATE_FINISHED)
+
+    def test_current_cross_year_season_label_stays_active_when_unfinished(self):
+        now = datetime(2026, 9, 28, 12, 0, 0)
+        row = {"scheKey": "18#25-26#l18_1_2026_4.js", "leagueId": 18, "matchSeason": "25-26", "fileName": "l18_1_2026_4.js"}
+        season_stats = {(18, "25-26"): (100, 99, now - timedelta(days=30), 1)}
+
+        with patch.object(schedulejs, "_schedule_work_file_exists", return_value=False), patch.object(
+            schedulejs, "_load_season_completion_stats", return_value=season_stats
+        ), patch.object(schedulejs, "_load_schedule_scope_completion_stats", return_value={}), patch.object(
+            schedulejs, "_is_schedule_row_locally_finished", return_value=False
+        ), patch.object(schedulejs, "_batch_mark_schedule_states") as mark_states:
+            rows = schedulejs._close_locally_finished_schedule_rows([row], now)
+
+        self.assertEqual(rows, [row])
+        mark_states.assert_called_once_with([], schedulejs.SCHEDULE_CRAWLER_STATE_FINISHED)
+
+    def test_rows_outside_recent_seasons_are_marked_finished(self):
+        rows = [
+            {"scheKey": "2#24#l2_1.js", "leagueId": 2, "matchSeason": "24", "fileName": "l2_1.js"},
+            {"scheKey": "2#26#l2_1.js", "leagueId": 2, "matchSeason": "26", "fileName": "l2_1.js"},
+        ]
+
+        with patch.object(schedulejs, "_recent_schedule_crawler_seasons_by_league", return_value={2: {"26"}}), patch.object(
+            schedulejs, "_schedule_work_file_exists", return_value=False
+        ), patch.object(schedulejs, "_batch_mark_schedule_states") as mark_states:
+            filtered = schedulejs._filter_recent_schedule_rows(rows, season_count=1)
+
+        self.assertEqual(filtered, [rows[1]])
+        mark_states.assert_called_once_with(["2#24#l2_1.js"], schedulejs.SCHEDULE_CRAWLER_STATE_FINISHED)
+
+    def test_regular_schedule_month_file_scope_includes_year(self):
+        self.assertEqual(
+            schedulejs._schedule_row_match_scope({"fileName": "l518_1_2025_11.js"}),
+            {"match_kind": 1, "year": 2025, "month": 11},
+        )
+
+    def test_consumed_expired_season_file_is_marked_finished(self):
+        matches = [{"matchState": 0, "matchTime": "2025-08-01 12:00"}]
+
+        self.assertEqual(
+            schedule._resolve_schedule_crawler_state(matches, "l", "1", season_expired=True),
+            schedulejs.SCHEDULE_CRAWLER_STATE_FINISHED,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
