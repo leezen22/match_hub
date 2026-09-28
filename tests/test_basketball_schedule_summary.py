@@ -64,7 +64,7 @@ class BasketballScheduleSummaryTest(unittest.TestCase):
     def test_recent_finished_season_rows_are_closed(self):
         now = datetime(2026, 9, 28, 12, 0, 0)
         row = {"scheKey": "2#26#l2_2.js", "leagueId": 2, "matchSeason": "26", "fileName": "l2_2.js"}
-        season_stats = {(2, "26"): (100, 100, now - timedelta(days=20), 1)}
+        season_stats = {(2, "26"): (100, 100, now - timedelta(days=40), 1)}
 
         with patch.object(schedulejs, "_schedule_work_file_exists", return_value=False), patch.object(
             schedulejs, "_load_season_completion_stats", return_value=season_stats

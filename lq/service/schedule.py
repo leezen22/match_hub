@@ -15,7 +15,7 @@ from lq.service.schedulejs import (
 from utils import fileUtil, sql_util, js2pyUtil
 from utils.dateUtil import getNowTime
 
-PRESEASON_REGULAR_SCHEDULE_FINISH_GRACE_DAYS = 14
+PRESEASON_REGULAR_SCHEDULE_FINISH_GRACE_DAYS = 7
 PLAYOFF_SCHEDULE_FINISH_GRACE_DAYS = 14
 
 
