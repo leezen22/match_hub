@@ -30,6 +30,79 @@ Run one update stage:
 .\venv\Scripts\python.exe zq_update.py odds --start-time "2026-05-05 00:00:00"
 ```
 
+Daily Match Hub maintenance service:
+
+```powershell
+.\venv\Scripts\python.exe scripts\daily_maintenance.py
+```
+
+The service is generic so more maintenance tasks can be added later. It is
+currently limited to:
+
+```python
+update_schedule_js_active(all_leagues=True, season_count=3)
+update_schedule()
+```
+
+It uses `data/locks/daily_maintenance.lock` to avoid overlapping runs and
+`data/state/daily_maintenance.json` to skip duplicate successful runs within 24
+hours. Use `--force` for an explicit manual run that bypasses the 24-hour guard.
+
+Install on Windows Task Scheduler, 18:00 every day:
+
+```powershell
+schtasks /Create /TN "match_hub_daily_maintenance" /SC DAILY /ST 18:00 /TR "\"%CD%\scripts\windows\daily_maintenance.bat\"" /F
+```
+
+Optional Windows startup/logon trigger. This is useful when the computer is not
+running at 18:00. The script still checks the 24-hour success interval, so the
+logon trigger will skip itself when the daily job has already succeeded:
+
+```powershell
+schtasks /Create /TN "match_hub_daily_maintenance_onlogon" /SC ONLOGON /TR "\"%CD%\scripts\windows\daily_maintenance.bat\"" /F
+```
+
+Check Windows task status:
+
+```powershell
+schtasks /Query /TN "match_hub_daily_maintenance" /V /FO LIST
+schtasks /Query /TN "match_hub_daily_maintenance_onlogon" /V /FO LIST
+```
+
+Run once manually on Windows:
+
+```powershell
+schtasks /Run /TN "match_hub_daily_maintenance"
+```
+
+Uninstall on Windows:
+
+```powershell
+schtasks /Delete /TN "match_hub_daily_maintenance" /F
+schtasks /Delete /TN "match_hub_daily_maintenance_onlogon" /F
+```
+
+Install on macOS launchd, 18:00 every day:
+
+```bash
+mkdir -p logs ~/Library/LaunchAgents
+cp scripts/launchd/com.match_hub.daily-maintenance.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.match_hub.daily-maintenance.plist
+```
+
+Run once manually on macOS:
+
+```bash
+launchctl start com.match_hub.daily-maintenance
+```
+
+Uninstall on macOS:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.match_hub.daily-maintenance.plist
+rm ~/Library/LaunchAgents/com.match_hub.daily-maintenance.plist
+```
+
 `--schedule-ids` is an optional exact-match scope for Basketball `odds` and
 `details`. System callers should pass only schedule IDs whose league, home
 team, and away team identity has already been verified against the current
