@@ -36,37 +36,64 @@ Daily Match Hub maintenance service:
 .\venv\Scripts\python.exe scripts\daily_maintenance.py
 ```
 
-The service is generic so more maintenance tasks can be added later. It is
-currently limited to:
+The service is generic so more maintenance tasks can be added later. It currently runs:
 
 ```python
 update_schedule_js_active(all_leagues=True, season_count=3)
 update_schedule()
+update_score()
+update_odds()
+update_details()
 ```
 
 It uses `data/locks/daily_maintenance.lock` to avoid overlapping runs and
-`data/state/daily_maintenance.json` to skip duplicate successful runs within 24
-hours. Use `--force` for an explicit manual run that bypasses the 24-hour guard.
+`data/state/daily_maintenance.json` to keep at least 24 hours between update
+attempts, including failed ones. An older schedule-only success does not
+suppress the first full update.
+Use `--force` for an explicit manual run that bypasses the 24-hour guard.
 
-Install on Windows Task Scheduler, 18:00 every day:
-
-```powershell
-schtasks /Create /TN "match_hub_daily_maintenance" /SC DAILY /ST 18:00 /TR "\"%CD%\scripts\windows\daily_maintenance.bat\"" /F
-```
-
-Optional Windows startup/logon trigger. This is useful when the computer is not
-running at 18:00. The script still checks the 24-hour success interval, so the
-logon trigger will skip itself when the daily job has already succeeded:
+Install on Windows Task Scheduler. It checks hourly and runs updates only when
+the previous attempt started at least 24 hours ago. Add a logon
+trigger so it also checks shortly after the computer starts and you sign in:
 
 ```powershell
-schtasks /Create /TN "match_hub_daily_maintenance_onlogon" /SC ONLOGON /TR "\"%CD%\scripts\windows\daily_maintenance.bat\"" /F
+$taskScript = (Resolve-Path ".\scripts\windows\daily_maintenance.bat").Path
+$taskName = "match_hub_daily_maintenance"
+schtasks /Create /TN $taskName /SC HOURLY /MO 1 /ST 00:00 /TR $taskScript /F
+$hiddenLauncher = (Resolve-Path ".\scripts\windows\run_daily_maintenance.vbs").Path
+$action = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\wscript.exe" -Argument ('//B //NoLogo "' + $hiddenLauncher + '"')
+Set-ScheduledTask -TaskName $taskName -Action $action
+$task = Get-ScheduledTask -TaskName $taskName
+$settings = $task.Settings
+$settings.StartWhenAvailable = $true
+$settings.DisallowStartIfOnBatteries = $false
+$settings.StopIfGoingOnBatteries = $false
+$logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
+Set-ScheduledTask -TaskName $taskName -Trigger @($task.Triggers + $logonTrigger) -Settings $settings
 ```
+
+The task runs in the signed-in user's session. Signing out stops automatic
+checks until the next sign-in. The lock and 24-hour attempt interval also
+protect against simultaneous hourly and logon triggers.
+The Windows task launches through `wscript.exe` with a minimized console.
+Open its taskbar window to see the current Basketball stage and live output.
+The window title shows the active stage and its position, such as
+`篮球更新 3/5 比分`; logs rotate at the configured size.
+`data/state/daily_maintenance.json` also records `current_step_label`.
+Check the current stage without opening the window:
+
+```powershell
+Get-Content .\data\state\daily_maintenance.json -Raw | ConvertFrom-Json | Select-Object last_result,current_step_index,step_total,current_step_label,last_completed_step_label
+```
+The Windows launcher adds `titan007.com` to `NO_PROXY`; basketball league
+metadata requests also bypass the system proxy directly. This avoids routing
+those requests through a local proxy listener even when its outbound rule is
+set to direct. A blocked or non-JS league response fails the update step.
 
 Check Windows task status:
 
 ```powershell
 schtasks /Query /TN "match_hub_daily_maintenance" /V /FO LIST
-schtasks /Query /TN "match_hub_daily_maintenance_onlogon" /V /FO LIST
 ```
 
 Run once manually on Windows:
@@ -79,7 +106,6 @@ Uninstall on Windows:
 
 ```powershell
 schtasks /Delete /TN "match_hub_daily_maintenance" /F
-schtasks /Delete /TN "match_hub_daily_maintenance_onlogon" /F
 ```
 
 Install on macOS launchd, 18:00 every day:

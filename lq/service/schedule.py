@@ -8,6 +8,7 @@ from lq.service.league import LQleague
 from lq.service.schedulejs import (
     SCHEDULE_CRAWLER_STATE_ACTIVE,
     SCHEDULE_CRAWLER_STATE_FINISHED,
+    _schedule_key_from_url,
     mark_schedule_js_persisted,
 )
 from utils import fileUtil, sql_util, js2pyUtil
@@ -41,14 +42,22 @@ def upSchedule():
     last_update_local = _get_task_time('schedule')
     update_time_sche = getNowTime()
 
-    for file in _schedule_work_files():
+    files = _schedule_work_files()
+    summary = {"selected": len(files), "success": 0, "failed": 0}
+    for file in files:
         print('start update schedule file: ' + file)
         is_updated = upScheduleByFile(file, 0, last_update_local)
-        if is_updated and os.path.exists(file):
-            os.remove(file)
+        if is_updated:
+            summary["success"] += 1
+            if os.path.exists(file):
+                os.remove(file)
+        else:
+            summary["failed"] += 1
+            print('schedule file retained for retry: ' + file)
 
-    print(getNowTime() + ' finish parse lq schedule js')
+    print(getNowTime() + ' finish parse lq schedule js: ' + str(summary))
     sql_util.upData('lq_note', {'lastUpdateTime': update_time_sche}, {'task': 'schedule'})
+    return summary
 
 
 def upScheduleOfLeague(sclassID, kindtype):
@@ -94,21 +103,28 @@ def _up_schedule_crawler_state(file, matchlist, kind_type, match_kind):
     if source_time is None:
         print("schedule JS persisted marker skipped, source timestamp unavailable: {0}".format(file))
         return False
+    sche_key = _schedule_key_from_file(file)
     mark_schedule_js_persisted(
-        _schedule_key_from_file(file),
+        sche_key,
         source_time,
         state,
         schejs_url=_schedule_url_from_file(file),
         schejs_path=file,
     )
+    rows = sql_util.select_rows(
+        "SELECT persistedSourceLastUpdateTime FROM lq_schedule_crawler WHERE scheKey='{0}'".format(
+            sql_util.safe(sche_key)
+        )
+    )
+    persisted_time = rows[0][0] if rows else None
+    if str(persisted_time) != source_time.strftime("%Y-%m-%d %H:%M:%S"):
+        print("schedule JS persisted marker failed; file retained: {0}".format(file))
+        return False
     return True
 
 
 def _schedule_key_from_file(file):
-    filename = os.path.basename(file)
-    league_id = filename.split('_')[0][1:] if filename.startswith(('l', 'c')) else ''
-    season = os.path.basename(os.path.dirname(file))
-    return "{0}#{1}#{2}".format(league_id, season, filename)
+    return _schedule_key_from_url(_schedule_url_from_file(file))
 
 
 def _schedule_url_from_file(file):

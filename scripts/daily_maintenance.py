@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """Daily Match Hub maintenance entrypoint.
 
-The service is intentionally generic. It currently runs only the Basketball
-schedule discovery/parse flow:
+The service runs the Basketball update flow:
 
 1. update_schedule_js_active(all_leagues=True, season_count=3)
 2. update_schedule()
+3. update_score()
+4. update_odds()
+5. update_details()
 
 It is safe to run from launchd/cron/Task Scheduler. A local lock prevents
-overlapping runs, and a state file prevents duplicate successful runs within
-the configured interval.
+overlapping runs, and a state file spaces out attempts by the configured
+interval.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import traceback
 from datetime import datetime
@@ -28,6 +31,14 @@ LOCK_PATH = LOCK_DIR / "daily_maintenance.lock"
 STATE_DIR = PROJECT_ROOT / "data" / "state"
 STATE_PATH = STATE_DIR / "daily_maintenance.json"
 DEFAULT_MIN_INTERVAL_HOURS = 24
+WORKFLOW_VERSION = 2
+STEP_LABELS = {
+    "basketball.update_schedule_js_active": "赛程 JS",
+    "basketball.update_schedule": "赛程解析",
+    "basketball.update_score": "比分",
+    "basketball.update_odds": "盘口",
+    "basketball.update_details": "盘口详情",
+}
 
 
 def _timestamp() -> str:
@@ -61,20 +72,39 @@ def _write_state(state):
 
 
 def _should_skip_for_interval(state, min_interval_hours):
-    last_success_at = _parse_timestamp(state.get("last_success_at"))
-    if last_success_at is None:
+    if state.get("workflow_version") != WORKFLOW_VERSION:
         return False, None
-    elapsed_hours = (datetime.now() - last_success_at).total_seconds() / 3600
+    if state.get("last_result") == "interrupted":
+        return False, None
+    last_attempt_at = _parse_timestamp(state.get("last_attempt_at") or state.get("last_success_at"))
+    if last_attempt_at is None:
+        return False, None
+    elapsed_hours = (datetime.now() - last_attempt_at).total_seconds() / 3600
     if elapsed_hours < float(min_interval_hours):
         return True, elapsed_hours
     return False, elapsed_hours
 
 
-def _run_step(name, callback):
+def _run_step(name, callback, state=None, step_index=None, step_total=None):
     started_at = datetime.now()
-    print("{0} daily maintenance step started: {1}".format(_timestamp(), name))
+    label = STEP_LABELS.get(name, name)
+    progress = "{0}/{1} ".format(step_index, step_total) if step_index and step_total else ""
+    if os.name == "nt" and os.getenv("MATCH_HUB_DAILY_CONSOLE") == "1":
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleTitleW("Match Hub - 篮球更新 " + progress + label)
+    print("{0} 篮球更新 {1}{2} 开始 ({3})".format(_timestamp(), progress, label, name))
+    if state is not None:
+        state["current_step"] = name
+        state["current_step_label"] = label
+        state["current_step_index"] = step_index
+        state["step_total"] = step_total
+        state["step_started_at"] = started_at.isoformat(timespec="seconds")
+        _write_state(state)
     try:
-        callback()
+        result = callback()
+        if isinstance(result, dict) and result.get("failed", 0):
+            raise RuntimeError("{0} item(s) failed".format(result["failed"]))
     except Exception as exc:
         detail = traceback.format_exc()
         print("{0} daily maintenance step failed: {1}, error={2}".format(_timestamp(), name, repr(exc)))
@@ -86,7 +116,15 @@ def _run_step(name, callback):
             "finished_at": datetime.now().isoformat(timespec="seconds"),
             "error": repr(exc),
         }
-    print("{0} daily maintenance step finished: {1}".format(_timestamp(), name))
+    finally:
+        if state is not None:
+            state["current_step"] = None
+            state["current_step_label"] = None
+            state["current_step_index"] = None
+            state["last_completed_step"] = name
+            state["last_completed_step_label"] = label
+            _write_state(state)
+    print("{0} 篮球更新 {1}{2} 完成".format(_timestamp(), progress, label))
     return {
         "name": name,
         "ok": True,
@@ -146,12 +184,12 @@ def _parse_args():
         "--min-interval-hours",
         type=float,
         default=DEFAULT_MIN_INTERVAL_HOURS,
-        help="Skip when the previous successful run is newer than this many hours. Default: 24.",
+        help="Skip when the previous attempt started fewer than this many hours ago. Default: 24.",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Run even when the previous successful run is within the minimum interval.",
+        help="Run even when the previous attempt is within the minimum interval.",
     )
     return parser.parse_args()
 
@@ -167,10 +205,15 @@ def main() -> int:
             return 0
 
         state = _load_state()
+        if state.get("last_result") == "running":
+            state["last_result"] = "interrupted"
+            state["last_interrupted_at"] = datetime.now().isoformat(timespec="seconds")
+            state["current_step"] = None
+            _write_state(state)
         should_skip, elapsed_hours = _should_skip_for_interval(state, args.min_interval_hours)
         if should_skip and not args.force:
             print(
-                "{0} daily maintenance skipped: last success {1:.2f} hours ago, min interval={2}".format(
+                "{0} daily maintenance skipped: last attempt {1:.2f} hours ago, min interval={2}".format(
                     _timestamp(),
                     elapsed_hours,
                     args.min_interval_hours,
@@ -182,7 +225,17 @@ def main() -> int:
             return 0
 
         print("{0} daily maintenance started".format(_timestamp()))
-        from lq_update import update_schedule, update_schedule_js_active
+        state["last_attempt_at"] = datetime.now().isoformat(timespec="seconds")
+        state["last_result"] = "running"
+        state["workflow_version"] = WORKFLOW_VERSION
+        _write_state(state)
+        from lq_update import (
+            update_details,
+            update_odds,
+            update_schedule,
+            update_schedule_js_active,
+            update_score,
+        )
 
         tasks = [
             (
@@ -190,16 +243,22 @@ def main() -> int:
                 lambda: update_schedule_js_active(all_leagues=True, season_count=3),
             ),
             ("basketball.update_schedule", update_schedule),
+            ("basketball.update_score", update_score),
+            ("basketball.update_odds", update_odds),
+            ("basketball.update_details", update_details),
         ]
-        steps = [_run_step(name, callback) for name, callback in tasks]
+        steps = [
+            _run_step(name, callback, state, index, len(tasks))
+            for index, (name, callback) in enumerate(tasks, start=1)
+        ]
         ok = all(step["ok"] for step in steps)
         state.update({
-            "last_attempt_at": datetime.now().isoformat(timespec="seconds"),
             "last_result": "success" if ok else "failed",
             "steps": steps,
         })
         if ok:
             state["last_success_at"] = datetime.now().isoformat(timespec="seconds")
+            state["workflow_version"] = WORKFLOW_VERSION
         _write_state(state)
 
         if not ok:

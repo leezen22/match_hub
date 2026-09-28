@@ -570,7 +570,7 @@ def update_basic_information_maintenance(mark_legacy=True):
 def update_schedule():
     from lq.service.schedule import upSchedule
 
-    upSchedule()
+    return upSchedule()
 
 
 def _schedule_work_path(schejs_url):
@@ -1853,7 +1853,7 @@ if __name__ == '__main__':
        
         # update_enrichment_pending()
         # update_enrichment_pending(league_id=2, season_count=3)
-         # update_enrichment_pending(all_leagues=True)
+        # update_enrichment_pending(all_leagues=True)
 
         # Optional league/team/player basic information tasks.
 

@@ -79,10 +79,11 @@ class WebUtil(object):
         info = ''
         while state != 1 and count < retry_time and state != 4:
             attempt = count + 1
-            if isMobile:
-                headers['User-Agent'] = random.choice(common_config.mobile_agents)
-            else:
-                headers['User-Agent'] = random.choice(common_config.web_agents)
+            if 'User-Agent' not in headers:
+                if isMobile:
+                    headers['User-Agent'] = random.choice(common_config.mobile_agents)
+                else:
+                    headers['User-Agent'] = random.choice(common_config.web_agents)
             try:
                 start_time = time.time()
                 if proxy_format:

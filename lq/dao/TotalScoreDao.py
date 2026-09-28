@@ -15,6 +15,7 @@ def upTotalOddsBymatchs(matchs):
             # 比赛ID，更新状态
             upTotalOddsBymid(match[0], match[6])
         matchs_size = matchs_size -1
+        print(match)
         print("总分剩余比赛数量：" + str(matchs_size))
         time.sleep(random.uniform(1, 3))
 

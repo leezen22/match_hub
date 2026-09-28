@@ -1,4 +1,4 @@
-from config import scrawler_config
+from config import lqconfig_qt, scrawler_config
 from utils import js2pyUtil
 from utils.webUtil import WebUtil
 
@@ -27,16 +27,27 @@ class LeagueCrawler(object):
         ]
 
     def get_league_metadata_web(self):
-        headers = {"Host": self.qt_web_host,'Referer': self.qt_web_referer}
+        headers = {
+            "Host": self.qt_web_host,
+            "Referer": self.qt_web_referer,
+            "Accept": "*/*",
+            "User-Agent": lqconfig_qt.headers["User-Agent"],
+        }
         left_data = self._get_left_data_by_league_id(headers)
-        webResponse = WebUtil.requests_get(self.qt_web_url, headers=headers, sourceName="lq league list")
+        webResponse = WebUtil.requests_get(
+            self.qt_web_url,
+            headers=headers,
+            timeout=(5, 15),
+            sourceName="lq league list",
+            trust_env=False,
+        )
         content = webResponse[1]
         leagueList = []
         if webResponse[0] == 1 and content != '':
             try:
                 parse_result = js2pyUtil.js2c(content, source=self.qt_web_url, required_names=("arr",))
                 if parse_result[0] != 1:
-                    return leagueList
+                    raise RuntimeError("basketball league list is not valid JS: {0}".format(self.qt_web_url))
                 context = parse_result[1]
                 countrys = context.arr
                 for country in countrys:
@@ -63,15 +74,21 @@ class LeagueCrawler(object):
                             "source": self.qt_web_url,
                             **left_data.get(int(leagueId), {}),
                         })
+                if not leagueList:
+                    raise ValueError("league list contains no leagues")
             except Exception as e:
-                print(e)
+                raise RuntimeError("basketball league list parse failed: {0}".format(self.qt_web_url)) from e
+        else:
+            raise RuntimeError("basketball league list request failed: {0}".format(self.qt_web_url))
         return leagueList
 
     def _get_left_data_by_league_id(self, headers):
         webResponse = WebUtil.requests_get(
             scrawler_config.qt_lq_left_data_js,
             headers=headers,
+            timeout=(5, 15),
             sourceName="lq left league data",
+            trust_env=False,
         )
         content = webResponse[1]
         metadata = {}

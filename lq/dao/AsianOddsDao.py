@@ -64,6 +64,7 @@ def upAsianOddsByMatchs(matchs):
             # time.sleep(random.uniform(1, 3))
         matchs_size = matchs_size -1
         time.sleep(random.uniform(1, 3))
+        print(match)
         print("让分剩余比赛数量：" + str(matchs_size))
 
 

@@ -108,7 +108,7 @@ def upActiveScheJs(league_ids=None, all_leagues=False, limit=None, season_count=
     print(getNowTime() + ' start update active lq schedule js')
 
     _ensure_schedule_crawler_tracking_columns()
-    _discover_due_playoff_schedule_js(league_ids=league_ids, all_leagues=all_leagues, now=now)
+    playoff_summary = _discover_due_playoff_schedule_js(league_ids=league_ids, all_leagues=all_leagues, now=now)
 
     rows = _select_active_schedule_js_rows(
         league_ids=league_ids,
@@ -117,7 +117,14 @@ def upActiveScheJs(league_ids=None, all_leagues=False, limit=None, season_count=
         season_count=season_count,
         now=now,
     )
-    summary = {"selected": len(rows), "success": 0, "updated": 0, "skipped": 0, "failed": 0}
+    summary = {
+        "selected": len(rows),
+        "success": 0,
+        "updated": 0,
+        "skipped": 0,
+        "failed": playoff_summary["failed"],
+        "playoff_discovery_failed": playoff_summary["failed"],
+    }
     for row in rows:
         result = upScheJS_season_result(row['scheUrl'], row['schePath'])
         if result["ok"]:
@@ -654,6 +661,7 @@ def _schedule_fetch_interval(row):
 
 def _discover_due_playoff_schedule_js(league_ids=None, all_leagues=False, now=None):
     now = now or datetime.now()
+    summary = {"selected": 0, "success": 0, "failed": 0}
     for league in _active_playoff_leagues(league_ids=league_ids, all_leagues=all_leagues):
         league_id = int(league['league_id'])
         if int(league.get('kind_type') or 1) != 1:
@@ -666,7 +674,11 @@ def _discover_due_playoff_schedule_js(league_ids=None, all_leagues=False, now=No
             continue
         if not _should_discover_playoff_js(league_id, season, now):
             continue
-        _discover_playoff_schedule_js(league_id, season)
+        result = _discover_playoff_schedule_js(league_id, season)
+        if result is not None:
+            summary["selected"] += 1
+            summary["success" if result.get("ok") else "failed"] += 1
+    return summary
 
 
 def _active_playoff_leagues(league_ids=None, all_leagues=False):
