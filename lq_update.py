@@ -47,6 +47,17 @@ REALTIME_BASIC_INFO_LEAGUE_IDS = (
     # 7,  # leagueId=7
 )
 
+# Realtime schedule JS league ids.
+# Direct-run update_schedule_js_active() uses this list by default. Use
+# update_schedule_js_active(league_ids=(2, 5, 7)) for special multi-league runs,
+# or update_schedule_js_active(all_leagues=True) for a full active scan.
+REALTIME_SCHEDULE_LEAGUE_IDS = (
+    2,  # leagueId=2
+    1,  # leagueId=1
+    # 5,  # leagueId=5
+    # 7,  # leagueId=7
+)
+
 
 # ------------------------------------------实时维护联赛范围-------------------------------------
 
@@ -299,6 +310,29 @@ def update_schedule_js():
     upScheJs()
 
 
+def update_schedule_js_active(league_ids=None, all_leagues=False, limit=None, season_count=3):
+    from lq.service.schedulejs import upActiveScheJs
+
+    resolved_league_ids = None if all_leagues else _resolve_schedule_league_ids(league_ids)
+    return upActiveScheJs(
+        league_ids=resolved_league_ids,
+        all_leagues=all_leagues,
+        limit=limit,
+        season_count=season_count,
+    )
+
+
+def normalize_historical_schedule_states(league_ids=None, all_leagues=False, keep_recent_seasons=3):
+    from lq.service.schedulejs import normalize_historical_schedule_states as normalize_states
+
+    resolved_league_ids = None if all_leagues else _resolve_schedule_league_ids(league_ids)
+    return normalize_states(
+        league_ids=resolved_league_ids,
+        all_leagues=all_leagues,
+        keep_recent_seasons=keep_recent_seasons,
+    )
+
+
 def update_team_info(league_id, version=None):
     from lq.service.league import LQleague
 
@@ -547,12 +581,12 @@ def _schedule_work_path(schejs_url):
     return os.path.join(lqconfig_qt.schedule_js_work_dir, str(season), filename)
 
 
-def update_schedule_by_league_season(league_id, season, kind_type):
+def update_schedule_by_league_season(league_id, season, kind_type=None, force_schedule=False):
     from lq.service.league import LQleague
     from lq.service.schedule import upScheduleByFile
-    from lq.service.schedulejs import upScheJS_season
+    from lq.service.schedulejs import prepare_schedule_js_for_update
 
-    forced_last_update = datetime(2000, 1, 1)
+    kind_type = _resolve_kind_type_or_error(league_id, kind_type)
     schejs_list = LQleague.getScheJS(int(league_id), str(season), int(kind_type))
     if len(schejs_list) == 0:
         print("no schedule js found: league_id={0}, season={1}, kind_type={2}".format(
@@ -562,33 +596,36 @@ def update_schedule_by_league_season(league_id, season, kind_type):
 
     fetched_count = 0
     parsed_count = 0
+    skipped_count = 0
     for schejs_url, schejs_path in schejs_list:
-        last_update_web = upScheJS_season(schejs_url, schejs_path, forced_last_update)
-        if last_update_web is None:
+        prepared = prepare_schedule_js_for_update(schejs_url, schejs_path, force=force_schedule)
+        if not prepared["should_parse"]:
+            skipped_count += 1
+            print("schedule js skipped: {0}, reason={1}".format(schejs_url, prepared["reason"]))
             continue
-
         fetched_count += 1
-        work_path = _schedule_work_path(schejs_url)
+        work_path = prepared["work_path"]
         if not os.path.exists(work_path):
             print("schedule js work file missing after fetch: {0}".format(work_path))
             continue
 
         print('start update schedule file: ' + work_path)
-        is_updated = upScheduleByFile(work_path, 0, forced_last_update)
+        is_updated = upScheduleByFile(work_path, 0, datetime(2000, 1, 1))
         if is_updated:
             parsed_count += 1
             if os.path.exists(work_path):
                 os.remove(work_path)
 
-    print("schedule league-season update finished: fetched={0}, parsed={1}".format(
-        fetched_count, parsed_count
+    print("schedule league-season update finished: prepared={0}, parsed={1}, skipped={2}".format(
+        fetched_count, parsed_count, skipped_count
     ))
 
 
-def update_schedule_recent_seasons(league_id, kind_type, season_count=3):
+def update_schedule_recent_seasons(league_id, kind_type=None, season_count=3, force_schedule=False):
+    kind_type = _resolve_kind_type_or_error(league_id, kind_type)
     seasons = _resolve_recent_seasons(league_id, season_count=season_count)
     for season in seasons:
-        update_schedule_by_league_season(league_id, season, kind_type)
+        update_schedule_by_league_season(league_id, season, kind_type, force_schedule=force_schedule)
     print("schedule recent seasons update finished: league_id={0}, seasons={1}".format(
         league_id, seasons
     ))
@@ -645,15 +682,17 @@ def _select_schedule_ids_by_league_season(
 def update_league_season_data(
         league_id,
         season,
-        kind_type,
+        kind_type=None,
         include_schedule=True,
         include_finished=False,
         limit=None,
         start_match_time=None,
         until_match_time=None,
-        until_days=3):
+        until_days=3,
+        force_schedule=False):
+    kind_type = _resolve_kind_type_or_error(league_id, kind_type)
     if include_schedule:
-        update_schedule_by_league_season(league_id, season, kind_type)
+        update_schedule_by_league_season(league_id, season, kind_type, force_schedule=force_schedule)
 
     resolved_until_match_time = _resolve_until_match_time(until_match_time, until_days)
     schedule_ids = _select_schedule_ids_by_league_season(
@@ -679,14 +718,16 @@ def update_league_season_data(
 
 def update_league_recent_seasons_data(
         league_id,
-        kind_type,
+        kind_type=None,
         include_schedule=True,
         include_finished=False,
         limit=None,
         start_match_time=None,
         until_match_time=None,
         until_days=3,
-        season_count=3):
+        season_count=3,
+        force_schedule=False):
+    kind_type = _resolve_kind_type_or_error(league_id, kind_type)
     seasons = _resolve_recent_seasons(league_id, season_count=season_count)
     for season in seasons:
         update_league_season_data(
@@ -699,6 +740,7 @@ def update_league_recent_seasons_data(
             start_match_time=start_match_time,
             until_match_time=until_match_time,
             until_days=until_days,
+            force_schedule=force_schedule,
         )
     print("league recent seasons local db data update finished: league_id={0}, seasons={1}".format(
         league_id, seasons
@@ -934,6 +976,15 @@ def _resolve_league_by_id(league_id):
     return None
 
 
+def _resolve_kind_type_or_error(league_id, kind_type=None):
+    if kind_type is not None:
+        return int(kind_type)
+    resolved = _resolve_league_by_id(league_id)
+    if resolved is None:
+        raise ValueError("could not resolve Titan kind_type for league_id={}".format(league_id))
+    return int(resolved["kind_type"])
+
+
 def _league_match_length(text, league):
     best_length = 0
     for field in ["league_name", "name_zh_hans", "name_zh_hant", "name_en"]:
@@ -1036,6 +1087,14 @@ def _resolve_enrichment_league_ids(league_ids=None):
 def _resolve_basic_info_league_ids(league_ids=None):
     if league_ids is None:
         league_ids = REALTIME_BASIC_INFO_LEAGUE_IDS
+    if isinstance(league_ids, str):
+        league_ids = _parse_league_ids(league_ids)
+    return sorted({int(item) for item in league_ids if str(item).strip()})
+
+
+def _resolve_schedule_league_ids(league_ids=None):
+    if league_ids is None:
+        league_ids = REALTIME_SCHEDULE_LEAGUE_IDS
     if isinstance(league_ids, str):
         league_ids = _parse_league_ids(league_ids)
     return sorted({int(item) for item in league_ids if str(item).strip()})
@@ -1385,6 +1444,8 @@ def main():
         choices=[
             "all",
             "schedule-js",
+            "schedule-js-active",
+            "normalize-schedule-states",
             "schedule",
             "score",
             "odds",
@@ -1416,7 +1477,7 @@ def main():
     parser.add_argument(
         "--all-leagues",
         action="store_true",
-        help="For enrichment-pending, ignore realtime league defaults and scan all leagues.",
+        help="For enrichment-pending/schedule-js-active/basic-info/roster-info, ignore realtime league defaults and scan all leagues.",
     )
     parser.add_argument("--team-id", type=int, help="Titan basketball TeamID.")
     parser.add_argument("--version", help="Titan team-info js version, for example 2026072009.")
@@ -1432,6 +1493,11 @@ def main():
         "--skip-schedule",
         action="store_true",
         help="For league-season-data, skip the schedule refresh before selecting local DB rows.",
+    )
+    parser.add_argument(
+        "--force-schedule",
+        action="store_true",
+        help="For league-season-data, bypass schedule crawler state/fetch interval checks.",
     )
     parser.add_argument(
         "--include-finished",
@@ -1573,6 +1639,19 @@ def main():
         )
     elif args.stage == "schedule-js":
         update_schedule_js()
+    elif args.stage == "schedule-js-active":
+        update_schedule_js_active(
+            league_ids=args.league_ids,
+            all_leagues=args.all_leagues,
+            limit=args.limit,
+            season_count=args.season_count,
+        )
+    elif args.stage == "normalize-schedule-states":
+        normalize_historical_schedule_states(
+            league_ids=args.league_ids,
+            all_leagues=args.all_leagues,
+            keep_recent_seasons=args.season_count,
+        )
     elif args.stage == "schedule":
         update_schedule()
     elif args.stage == "score":
@@ -1666,12 +1745,17 @@ def main():
         except ValueError as exc:
             parser.error(str(exc))
         kind_type = args.kind_type if args.kind_type is not None else _resolve_kind_type_by_league_id_or_error(parser, args.league_id)
-        update_schedule_by_league_season(args.league_id, args.season, kind_type)
+        update_schedule_by_league_season(args.league_id, args.season, kind_type, force_schedule=args.force_schedule)
     elif args.stage == "schedule-recent-seasons":
         if args.league_id is None:
             parser.error("schedule-recent-seasons requires --league-id")
         kind_type = args.kind_type if args.kind_type is not None else _resolve_kind_type_by_league_id_or_error(parser, args.league_id)
-        update_schedule_recent_seasons(args.league_id, kind_type, season_count=args.season_count)
+        update_schedule_recent_seasons(
+            args.league_id,
+            kind_type,
+            season_count=args.season_count,
+            force_schedule=args.force_schedule,
+        )
     elif args.stage == "league-season-data":
         if args.league_id is None or args.season is None:
             parser.error("league-season-data requires --league-id and --season")
@@ -1690,6 +1774,7 @@ def main():
             start_match_time=args.start_time,
             until_match_time=args.until_time,
             until_days=args.until_days,
+            force_schedule=args.force_schedule,
         )
     elif args.stage == "league-recent-seasons-data":
         if args.league_id is None:
@@ -1705,6 +1790,7 @@ def main():
             until_match_time=args.until_time,
             until_days=args.until_days,
             season_count=args.season_count,
+            force_schedule=args.force_schedule,
         )
     elif args.stage == "request":
         request = " ".join(args.request_text).strip()
@@ -1746,11 +1832,19 @@ if __name__ == '__main__':
         main()
     else:
         # Default direct-run path: update match state, score, odds and odds detail data.
-        # update_schedule_js()
-        # update_schedule()
-        update_score(lookback_days=14)
-        update_odds(lookback_days=14, until_days=1)
-        update_details(lookback_days=14, until_days=1)
+        # update_schedule_js_active(league_ids=(2, 5, 7), season_count=3)
+        # update_schedule_js_active(all_leagues=True, season_count=3)
+        # 一次性维护历史赛季 state，不访问网络；保留每个联赛最近 3 个赛季。
+        # normalize_historical_schedule_states(all_leagues=True, keep_recent_seasons=3)
+
+
+        # update_schedule_js_active(league_ids=(2, 5, 7), season_count=3)
+         # update_schedule_js()
+        update_schedule_js_active(all_leagues=True, season_count=3)
+        update_schedule()
+        update_score()
+        update_odds()
+        update_details()
 
         # all_leagues=True
 
@@ -1762,5 +1856,6 @@ if __name__ == '__main__':
          # update_enrichment_pending(all_leagues=True)
 
         # Optional league/team/player basic information tasks.
-        update_basic_info(all_leagues=True)
-        update_roster_info(all_leagues=True,missing_only=True, fetch_photos=False)
+
+        # update_basic_info(all_leagues=True)
+        # update_roster_info(all_leagues=True,missing_only=True, fetch_photos=False)

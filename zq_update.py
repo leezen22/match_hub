@@ -13,6 +13,13 @@ from zq.league_metadata import (
 
 DEFAULT_ODDS_START_TIME = '2026-06-05 00:00:00'
 
+# Realtime football schedule JS league ids.
+# Edit this list for high-priority leagues. Use all_leagues=True for a broad
+# active scan, still bounded by season_count.
+REALTIME_SCHEDULE_LEAGUE_IDS = (
+    # 36,  # example: English Championship
+)
+
 LEAGUE_NAME_ALIASES = {
     "世亚预": "亚洲预选",
     "世界杯亚洲区预选赛": "亚洲预选",
@@ -41,6 +48,29 @@ def update_schedule_js_local():
     from zq.service.schedulejs import upScheJS_local
 
     upScheJS_local()
+
+
+def update_schedule_js_active(league_ids=None, all_leagues=False, limit=None, season_count=3):
+    from zq.service.schedulejs import upActiveScheJS
+
+    resolved_league_ids = None if all_leagues else _resolve_schedule_league_ids(league_ids)
+    return upActiveScheJS(
+        league_ids=resolved_league_ids,
+        all_leagues=all_leagues,
+        limit=limit,
+        season_count=season_count,
+    )
+
+
+def normalize_historical_schedule_states(league_ids=None, all_leagues=False, keep_recent_seasons=3):
+    from zq.service.schedulejs import normalize_historical_schedule_states as normalize_states
+
+    resolved_league_ids = None if all_leagues else _resolve_schedule_league_ids(league_ids)
+    return normalize_states(
+        league_ids=resolved_league_ids,
+        all_leagues=all_leagues,
+        keep_recent_seasons=keep_recent_seasons,
+    )
 
 
 def update_schedule():
@@ -74,14 +104,14 @@ def update_odds(start_time=DEFAULT_ODDS_START_TIME):
     TotalOddsZq.update_halfgoals(start_time)
 
 
-def run_all(start_time=DEFAULT_ODDS_START_TIME):
-    update_schedule_js()
+def run_all(start_time=DEFAULT_ODDS_START_TIME, season_count=3):
+    update_schedule_js_active(all_leagues=True, season_count=season_count)
     update_schedule()
     update_score()
     update_odds(start_time)
 
 
-def update_schedule_by_league_season(league_id, season, league_type=None, if_have_sub=None):
+def update_schedule_by_league_season(league_id, season, league_type=None, if_have_sub=None, force_schedule=False):
     from zq.service import schedulejs
 
     resolved = _resolve_league_by_id(league_id)
@@ -93,24 +123,60 @@ def update_schedule_by_league_season(league_id, season, league_type=None, if_hav
     if league_type is None or if_have_sub is None:
         raise ValueError("could not resolve football league metadata for league_id={}".format(league_id))
 
-    forced_last_update = datetime(2000, 1, 1)
-    schejs_list = schedulejs.getSchedulePending(league_id, league_type, season, if_have_sub)
-    fetched_count = 0
+    schejs_list = schedulejs.getSchedulePending(
+        league_id,
+        league_type,
+        season,
+        if_have_sub,
+        include_finished=force_schedule,
+    )
+    prepared_count = 0
     parsed_count = 0
+    skipped_count = 0
     for schejs_url, schejs_path, weburl in schejs_list:
-        last_update_web = schedulejs.upScheJS_season(schejs_url, schejs_path, weburl, forced_last_update)
-        if last_update_web is None:
+        prepared = schedulejs.prepare_schedule_js_for_update(
+            schejs_url,
+            schejs_path,
+            weburl,
+            force=force_schedule,
+        )
+        if not prepared["should_parse"]:
+            skipped_count += 1
+            print("football schedule js skipped: {0}, reason={1}".format(schejs_url, prepared["reason"]))
             continue
-        fetched_count += 1
-        work_path = schedulejs._schedule_work_path(schejs_url)
+        prepared_count += 1
+        work_path = prepared["work_path"]
         print("start update football schedule file: " + work_path)
-        if schedulejs.upLeagueScheByFile(work_path, 0, forced_last_update):
+        if schedulejs.upLeagueScheByFile(work_path, 0, datetime(2000, 1, 1)):
             parsed_count += 1
             if os.path.exists(work_path):
                 os.remove(work_path)
-    print("football schedule league-season update finished: fetched={0}, parsed={1}".format(
-        fetched_count,
+    print("football schedule league-season update finished: prepared={0}, parsed={1}, skipped={2}".format(
+        prepared_count,
         parsed_count,
+        skipped_count,
+    ))
+
+
+def update_schedule_recent_seasons(league_id, league_type=None, if_have_sub=None, season_count=3, force_schedule=False):
+    resolved = _resolve_league_by_id(league_id)
+    if resolved is not None:
+        if league_type is None:
+            league_type = resolved["league_type"]
+        if if_have_sub is None:
+            if_have_sub = resolved["if_have_sub"]
+    seasons = _resolve_recent_seasons(league_id, season_count=season_count)
+    for season in seasons:
+        update_schedule_by_league_season(
+            league_id,
+            season,
+            league_type,
+            if_have_sub,
+            force_schedule=force_schedule,
+        )
+    print("football schedule recent seasons update finished: league_id={0}, seasons={1}".format(
+        league_id,
+        seasons,
     ))
 
 
@@ -123,9 +189,16 @@ def update_league_season_data(
         include_finished=False,
         limit=None,
         until_match_time=None,
-        until_days=3):
+        until_days=3,
+        force_schedule=False):
     if include_schedule:
-        update_schedule_by_league_season(league_id, season, league_type, if_have_sub)
+        update_schedule_by_league_season(
+            league_id,
+            season,
+            league_type,
+            if_have_sub,
+            force_schedule=force_schedule,
+        )
 
     resolved_until_match_time = _resolve_until_match_time(until_match_time, until_days)
     matches = _select_matches_by_league_season(
@@ -145,6 +218,39 @@ def update_league_season_data(
     ))
     update_match_data(matches)
     print("football league-season local db data update finished: count={0}".format(len(matches)))
+
+
+def update_league_recent_seasons_data(
+        league_id,
+        league_type=None,
+        if_have_sub=None,
+        include_schedule=True,
+        include_finished=False,
+        limit=None,
+        until_match_time=None,
+        until_days=3,
+        season_count=3,
+        force_schedule=False):
+    resolved = _resolve_league_by_id(league_id)
+    if resolved is not None:
+        if league_type is None:
+            league_type = resolved["league_type"]
+        if if_have_sub is None:
+            if_have_sub = resolved["if_have_sub"]
+    seasons = _resolve_recent_seasons(league_id, season_count=season_count)
+    for season in seasons:
+        update_league_season_data(
+            league_id,
+            season,
+            league_type,
+            if_have_sub,
+            include_schedule=include_schedule,
+            include_finished=include_finished,
+            limit=limit,
+            until_match_time=until_match_time,
+            until_days=until_days,
+            force_schedule=force_schedule,
+        )
 
 
 def update_match_data(matches):
@@ -450,6 +556,28 @@ def _parse_league_id(text):
     return None
 
 
+def _parse_league_ids(value):
+    if value is None:
+        return []
+    return [int(item.strip()) for item in str(value).split(',') if item.strip()]
+
+
+def _resolve_recent_seasons(league_id, season_count=3):
+    resolved = _resolve_league_by_id(league_id)
+    if resolved is None:
+        raise ValueError("could not resolve football league metadata for league_id={}".format(league_id))
+    seasons = [str(season) for season in resolved.get("seasons", []) if str(season).strip()]
+    return seasons[:int(season_count)]
+
+
+def _resolve_schedule_league_ids(league_ids=None):
+    if league_ids is None:
+        league_ids = REALTIME_SCHEDULE_LEAGUE_IDS
+    if isinstance(league_ids, str):
+        league_ids = _parse_league_ids(league_ids)
+    return sorted({int(item) for item in league_ids if str(item).strip()})
+
+
 def _parse_season(text):
     match = re.search(r"(?<!\d)(\d{4}\s*-\s*\d{4}|\d{2}\s*-\s*\d{2})(?!\d)\s*(?:赛季|season)?", text, flags=re.IGNORECASE)
     if match:
@@ -601,12 +729,16 @@ def main():
         choices=[
             "all",
             "schedule-js",
+            "schedule-js-active",
+            "normalize-schedule-states",
             "schedule-js-local",
             "schedule",
             "score",
             "odds",
             "schedule-league-season",
+            "schedule-recent-seasons",
             "league-season-data",
+            "league-recent-seasons-data",
             "request",
             "bootstrap-live-match",
         ],
@@ -614,13 +746,30 @@ def main():
     )
     parser.add_argument("request_text", nargs="*", help="Natural-language request for the request stage.")
     parser.add_argument("--league-id", type=int, help="Titan football league/SclassID.")
+    parser.add_argument("--league-ids", help="Comma-separated football league ids, for example 36,37,39.")
     parser.add_argument("--schedule-id", type=int, help="Titan football schedule ID for one verified live-match bootstrap.")
     parser.add_argument("--season", help="Season, for example 2026 or 2025-2026.")
     parser.add_argument("--league-type", type=int, choices=[1, 2], help="Titan football league type: 1=league, 2=cup.")
     parser.add_argument("--if-have-sub", type=int, choices=[0, 1], help="Titan football sub-league flag.")
     parser.add_argument("--skip-schedule", action="store_true", help="For league-season-data, skip schedule refresh.")
+    parser.add_argument(
+        "--force-schedule",
+        action="store_true",
+        help="For league-season-data, bypass schedule crawler state/fetch interval checks.",
+    )
     parser.add_argument("--include-finished", action="store_true", help="For league-season-data, include final rows even when flags are closed.")
     parser.add_argument("--limit", type=int, help="Limit selected schedule ids for league-season-data.")
+    parser.add_argument(
+        "--all-leagues",
+        action="store_true",
+        help="For schedule-js-active/normalize-schedule-states, scan all leagues within the season limit.",
+    )
+    parser.add_argument(
+        "--season-count",
+        type=int,
+        default=3,
+        help="For active football schedule JS updates, keep current plus recent seasons. Default: 3.",
+    )
     parser.add_argument("--until-time", help="For score/odds/detail updates, only select matches at or before this matchTime.")
     parser.add_argument(
         "--until-days",
@@ -642,9 +791,22 @@ def main():
     args = parser.parse_args()
 
     if args.stage == "all":
-        run_all(args.start_time)
+        run_all(args.start_time, season_count=args.season_count)
     elif args.stage == "schedule-js":
         update_schedule_js()
+    elif args.stage == "schedule-js-active":
+        update_schedule_js_active(
+            league_ids=args.league_ids,
+            all_leagues=args.all_leagues,
+            limit=args.limit,
+            season_count=args.season_count,
+        )
+    elif args.stage == "normalize-schedule-states":
+        normalize_historical_schedule_states(
+            league_ids=args.league_ids,
+            all_leagues=args.all_leagues,
+            keep_recent_seasons=args.season_count,
+        )
     elif args.stage == "schedule-js-local":
         update_schedule_js_local()
     elif args.stage == "schedule":
@@ -656,7 +818,23 @@ def main():
     elif args.stage == "schedule-league-season":
         if args.league_id is None or args.season is None:
             parser.error("schedule-league-season requires --league-id and --season")
-        update_schedule_by_league_season(args.league_id, args.season, args.league_type, args.if_have_sub)
+        update_schedule_by_league_season(
+            args.league_id,
+            args.season,
+            args.league_type,
+            args.if_have_sub,
+            force_schedule=args.force_schedule,
+        )
+    elif args.stage == "schedule-recent-seasons":
+        if args.league_id is None:
+            parser.error("schedule-recent-seasons requires --league-id")
+        update_schedule_recent_seasons(
+            args.league_id,
+            args.league_type,
+            args.if_have_sub,
+            season_count=args.season_count,
+            force_schedule=args.force_schedule,
+        )
     elif args.stage == "league-season-data":
         if args.league_id is None or args.season is None:
             parser.error("league-season-data requires --league-id and --season")
@@ -670,6 +848,22 @@ def main():
             limit=args.limit,
             until_match_time=args.until_time,
             until_days=args.until_days,
+            force_schedule=args.force_schedule,
+        )
+    elif args.stage == "league-recent-seasons-data":
+        if args.league_id is None:
+            parser.error("league-recent-seasons-data requires --league-id")
+        update_league_recent_seasons_data(
+            args.league_id,
+            args.league_type,
+            args.if_have_sub,
+            include_schedule=not args.skip_schedule,
+            include_finished=args.include_finished,
+            limit=args.limit,
+            until_match_time=args.until_time,
+            until_days=args.until_days,
+            season_count=args.season_count,
+            force_schedule=args.force_schedule,
         )
     elif args.stage == "request":
         request = " ".join(args.request_text).strip()
@@ -706,7 +900,9 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         main()
     else:
-        update_schedule_js()
+        # Default direct-run path: active recent-season schedule JS only.
+        update_schedule_js_active(all_leagues=True, season_count=3)
+        # update_schedule_js()
         # update_schedule_js_local()
         update_schedule()
         update_score()

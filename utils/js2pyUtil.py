@@ -143,8 +143,14 @@ def parse_js_content(content: str, source: str, required_names: Optional[Iterabl
 
 
 # Parse remote JS and return [state, context].
-def jsyWebjs(url, headers, required_names: Optional[Iterable[str]] = None):
-    webResponse = WebUtil.requests_get(url, headers, sourceName="js2py remote js")
+def jsyWebjs(url, headers, required_names: Optional[Iterable[str]] = None, trust_env=True, timeout=5):
+    webResponse = WebUtil.requests_get(
+        url,
+        headers,
+        timeout=timeout,
+        sourceName="js2py remote js",
+        trust_env=trust_env,
+    )
     state = webResponse[0]
     webContent = webResponse[1]
     if state != 1:

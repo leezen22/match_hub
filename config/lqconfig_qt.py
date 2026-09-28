@@ -112,8 +112,10 @@ matchkind ={'3':'季前赛','2':'季后赛','1':'常规赛'}
 
 # requests header 信息
 headers = {"Host": "nba.titan007.com",
-           "Referer": "http://nba.titian007.com/",
-         "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36"
+           "Referer": "https://nba.titan007.com/",
+           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+           "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+         "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 }
 
 headers_europe = {

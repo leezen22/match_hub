@@ -5,6 +5,9 @@ from config.db_config import get_db_config
 from pymysql.converters import escape_string
 
 DB_PROFILE = "default"
+DB_CONNECT_TIMEOUT = 5
+DB_READ_TIMEOUT = 15
+DB_WRITE_TIMEOUT = 15
 
 
 class SqlConnectionError(RuntimeError):
@@ -13,8 +16,9 @@ class SqlConnectionError(RuntimeError):
 
 def _connect(connect_timeout=None):
     config = get_db_config(DB_PROFILE)
-    if connect_timeout is not None:
-        config["connect_timeout"] = connect_timeout
+    config["connect_timeout"] = connect_timeout if connect_timeout is not None else DB_CONNECT_TIMEOUT
+    config.setdefault("read_timeout", DB_READ_TIMEOUT)
+    config.setdefault("write_timeout", DB_WRITE_TIMEOUT)
     return pymysql.connect(**config)
 
 def select(sql, isDict=False):

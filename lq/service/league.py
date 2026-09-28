@@ -1,7 +1,7 @@
 import os
 import traceback
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 from config import common_config, lqconfig_qt
@@ -28,6 +28,16 @@ LEAGUE_METADATA_COLUMNS = {
     "collection_status": "ADD COLUMN `collection_status` varchar(32) CHARACTER SET utf8 NULL",
     "has_data": "ADD COLUMN `has_data` tinyint(4) NULL",
 }
+
+
+def _schedule_src_query(sche_src):
+    return urlsplit(sche_src or '').query
+
+
+def _with_schedule_query(url, query):
+    if not query or '?' in url:
+        return url
+    return url + '?' + query
 
 
 class LQleague(object):
@@ -188,6 +198,8 @@ class LQleague(object):
                 urljoin(lqconfig_qt.lanqurl, scheSrc),
                 lqconfig_qt.headers,
                 required_names=("arrLeague", "ymList"),
+                trust_env=False,
+                timeout=(10, 20),
             )
             scheContext = parse_result[1]
             if parse_result[0] == 1 and scheContext != '':
@@ -272,6 +284,7 @@ class LQleague(object):
             defaulturl2 = lqconfig_qt.lanqurl + '/cn/Playoffs.aspx?SclassID=' + str(leagueId) + '&MatchSeason=' + str(
                 season)
             scheSrc = LQleague.findScheJS(defaulturl1, lqconfig_qt.headers)
+            version_query = _schedule_src_query(scheSrc)
             # print([leagueId, season, type, defaulturl, scheSrc])
             if scheSrc == '':
                 append_schedule_src(LQleague.findScheJS(defaulturl3, lqconfig_qt.headers))
@@ -282,6 +295,8 @@ class LQleague(object):
                 sche_url,
                 lqconfig_qt.headers,
                 required_names=("arrLeague", "arrData", "ymList"),
+                trust_env=False,
+                timeout=(10, 20),
             )
             scheContext = parse_result[1]
             if parse_result[0] == 1 and scheContext != '':
@@ -296,13 +311,14 @@ class LQleague(object):
                     else:
                         for ym in ymlist:
                             filename = 'l' + str(leagueId) + '_' + '1' + '_' + str(ym[0]) + '_' + str(ym[1]) + '.js'
-                            jsUrl = lqconfig_qt.scheWebdir + season_path + '/' + filename
+                            jsUrl = _with_schedule_query(lqconfig_qt.scheWebdir + season_path + '/' + filename, version_query)
                             jsPath = lqconfig_qt.schelocaldir + season_path + '/' + filename
                             jsfilelist.append([jsUrl, jsPath])
                     # 获取季前赛赛程JS文件地址信息
                     if '3' in haveMk:
                         filename = 'l' + str(leagueId) + '_' + '3' + '.js'
-                        jsUrl = lqconfig_qt.scheWebdir + season_path + '/' + filename
+                        preseason_src = LQleague.findScheJS(defaulturl3, lqconfig_qt.headers)
+                        jsUrl = urljoin(lqconfig_qt.lanqurl, preseason_src) if preseason_src else _with_schedule_query(lqconfig_qt.scheWebdir + season_path + '/' + filename, version_query)
                         jsPath = lqconfig_qt.schelocaldir + season_path + '/' + filename
                         item = [jsUrl, jsPath]
                         if item not in jsfilelist:
@@ -310,7 +326,8 @@ class LQleague(object):
                     # 获取季后赛赛程JS文件地址信息
                     if '2' in haveMk:
                         filename = 'l' + str(leagueId) + '_' + '2' + '.js'
-                        jsUrl = lqconfig_qt.scheWebdir + season_path + '/' + filename
+                        playoffs_src = LQleague.findScheJS(defaulturl2, lqconfig_qt.headers)
+                        jsUrl = urljoin(lqconfig_qt.lanqurl, playoffs_src) if playoffs_src else _with_schedule_query(lqconfig_qt.scheWebdir + season_path + '/' + filename, version_query)
                         jsPath = lqconfig_qt.schelocaldir + season_path + '/' + filename
                         item = [jsUrl, jsPath]
                         if item not in jsfilelist:
@@ -429,7 +446,13 @@ class LQleague(object):
     def findScheJS(pageurl, headers):
         targetSrc = ''
         try:
-            webresponse = WebUtil.requests_get(pageurl, headers=headers, sourceName='normal default page')
+            webresponse = WebUtil.requests_get(
+                pageurl,
+                headers=headers,
+                timeout=(10, 20),
+                sourceName='normal default page',
+                trust_env=False,
+            )
             state = webresponse[0]
             webcontent = webresponse[1]
             if state == 1 and webcontent != '':
@@ -462,6 +485,8 @@ class LQleague(object):
                 urljoin(lqconfig_qt.lanqurl, scheSrc),
                 lqconfig_qt.headers,
                 required_names=("ymList",),
+                trust_env=False,
+                timeout=(10, 20),
             )
             scheContext = parse_result[1]
             if parse_result[0] == 1 and scheContext != '':

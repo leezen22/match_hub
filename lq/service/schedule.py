@@ -1,13 +1,20 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from config import lqconfig_qt
 from lq.dao import MatchDao
 from lq.extract.MatchJS import getMatchFromFile
-from lq.service import tag_mainten
 from lq.service.league import LQleague
-from utils import fileUtil, sql_util
+from lq.service.schedulejs import (
+    SCHEDULE_CRAWLER_STATE_ACTIVE,
+    SCHEDULE_CRAWLER_STATE_FINISHED,
+    mark_schedule_js_persisted,
+)
+from utils import fileUtil, sql_util, js2pyUtil
 from utils.dateUtil import getNowTime
+
+PRESEASON_REGULAR_SCHEDULE_FINISH_GRACE_DAYS = 7
+PLAYOFF_SCHEDULE_FINISH_GRACE_DAYS = 14
 
 
 def _get_task_time(task):
@@ -76,11 +83,76 @@ def upScheduleByFile(file, flag, updateTime_local):
     if kindType == 'l' and matchkind == '2':
         _close_removed_playoff_placeholders(matchlist)
 
-    if isfinished == 2 and matchkind == '1':
-        tag_mainten.upScheTaskByFlag(file, isfinished)
     if len(matchlist) > 0:
-        isUpdated = True
+        isUpdated = _up_schedule_crawler_state(file, matchlist, kindType, matchkind)
     return isUpdated
+
+
+def _up_schedule_crawler_state(file, matchlist, kind_type, match_kind):
+    state = _resolve_schedule_crawler_state(matchlist, kind_type, match_kind)
+    source_time = _schedule_file_source_time(file)
+    if source_time is None:
+        print("schedule JS persisted marker skipped, source timestamp unavailable: {0}".format(file))
+        return False
+    mark_schedule_js_persisted(
+        _schedule_key_from_file(file),
+        source_time,
+        state,
+        schejs_url=_schedule_url_from_file(file),
+        schejs_path=file,
+    )
+    return True
+
+
+def _schedule_key_from_file(file):
+    filename = os.path.basename(file)
+    league_id = filename.split('_')[0][1:] if filename.startswith(('l', 'c')) else ''
+    season = os.path.basename(os.path.dirname(file))
+    return "{0}#{1}#{2}".format(league_id, season, filename)
+
+
+def _schedule_url_from_file(file):
+    filename = os.path.basename(file)
+    season = os.path.basename(os.path.dirname(file))
+    return lqconfig_qt.scheWebdir + season + '/' + filename
+
+
+def _schedule_file_source_time(file):
+    try:
+        context = js2pyUtil.jsLocjs(file)
+        value = getattr(context, 'lastUpdateTime', None)
+        if value is None or str(value) == '':
+            return None
+        return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
+    except Exception as exc:
+        print("schedule JS source timestamp parse failed: {0}, error={1}".format(file, exc))
+        return None
+
+
+def _resolve_schedule_crawler_state(matchlist, kind_type, match_kind):
+    if not matchlist:
+        return SCHEDULE_CRAWLER_STATE_ACTIVE
+    if any(match.get('matchState') not in (-1, -4) for match in matchlist):
+        return SCHEDULE_CRAWLER_STATE_ACTIVE
+    if not _is_schedule_past_finish_grace(matchlist, match_kind):
+        return SCHEDULE_CRAWLER_STATE_ACTIVE
+    return SCHEDULE_CRAWLER_STATE_FINISHED
+
+
+def _is_schedule_past_finish_grace(matchlist, match_kind):
+    match_times = []
+    for match in matchlist:
+        match_time = match.get('matchTime')
+        if not match_time:
+            continue
+        if isinstance(match_time, datetime):
+            match_times.append(match_time)
+        else:
+            match_times.append(datetime.strptime(str(match_time), "%Y-%m-%d %H:%M"))
+    if not match_times:
+        return False
+    grace_days = PLAYOFF_SCHEDULE_FINISH_GRACE_DAYS if str(match_kind) == '2' else PRESEASON_REGULAR_SCHEDULE_FINISH_GRACE_DAYS
+    return max(match_times) <= datetime.now() - timedelta(days=grace_days)
 
 
 def _close_removed_playoff_placeholders(matchlist):
