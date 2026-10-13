@@ -113,7 +113,9 @@ def update_team_roster(team_id, version=None, fetch_photos=True, run_migrate=Tru
     }
 
 
-def update_all_team_rosters(limit=None, offset=0, missing_only=False, fetch_photos=True, league_id=None):
+def update_all_team_rosters(limit=None, offset=0, missing_only=False, fetch_photos=True, league_id=None,
+                            updated_before=None):
+    cutoff = _roster_update_cutoff(updated_before)
     migrate()
     where = [
         "t.collection_status='success'",
@@ -135,12 +137,32 @@ def update_all_team_rosters(limit=None, offset=0, missing_only=False, fetch_phot
             )
         }
         teams = [team for team in teams if int(team["teamID"]) not in collected_team_ids]
+    if cutoff is not None:
+        last_success_by_team = {
+            int(row["teamID"]): row["last_success_at"]
+            for row in sql_util.select_dicts(
+                "SELECT teamID,MAX(captured_at) AS last_success_at "
+                "FROM lq_team_roster_snapshot_batch "
+                "WHERE source_namespace='{0}' AND collection_status='success' "
+                "GROUP BY teamID".format(SOURCE_NAMESPACE)
+            )
+        }
+        teams = [
+            team for team in teams
+            if last_success_by_team.get(int(team["teamID"])) is None
+            or last_success_by_team[int(team["teamID"])] < cutoff
+        ]
     if offset:
         teams = teams[int(offset):]
     if limit is not None:
         teams = teams[:int(limit)]
 
     total = len(teams)
+    print("basketball roster selection: updated_before={0}, missing_only={1}, total={2}".format(
+        cutoff.isoformat(sep=" ") if cutoff else None,
+        missing_only,
+        total,
+    ))
     success = 0
     failed = 0
     failures = []
@@ -161,6 +183,21 @@ def update_all_team_rosters(limit=None, offset=0, missing_only=False, fetch_phot
             _record_roster_failure(team)
     print("basketball all roster update finished: total={0}, success={1}, failed={2}".format(total, success, failed))
     return {"total": total, "success": success, "failed": failed, "failures": failures}
+
+
+def _roster_update_cutoff(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        cutoff = value
+    else:
+        try:
+            cutoff = datetime.fromisoformat(str(value).strip())
+        except ValueError as exc:
+            raise ValueError("updated_before must be YYYY-MM-DD or YYYY-MM-DD HH:MM:SS") from exc
+    if cutoff.tzinfo is not None:
+        raise ValueError("updated_before must be a local time without timezone")
+    return cutoff
 
 
 def update_player_profile_photos(

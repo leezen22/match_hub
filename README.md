@@ -96,10 +96,22 @@ Check Windows task status:
 schtasks /Query /TN "match_hub_daily_maintenance" /V /FO LIST
 ```
 
-Run once manually on Windows:
+Enable the existing Windows task without running it immediately:
+
+```powershell
+Enable-ScheduledTask -TaskName "match_hub_daily_maintenance"
+```
+
+Manually trigger a scheduled check on Windows (the 24-hour interval still applies):
 
 ```powershell
 schtasks /Run /TN "match_hub_daily_maintenance"
+```
+
+To run all update stages immediately, bypassing the interval, use:
+
+```powershell
+.\venv\Scripts\python.exe scripts\daily_maintenance.py --force
 ```
 
 Uninstall on Windows:
@@ -157,6 +169,20 @@ Run basketball single-match enrichment:
 .\venv\Scripts\python.exe lq_update.py enrichment --schedule-id 705106
 ```
 
+Refresh basketball team rosters whose last successful collection was before a
+local date/time, including teams with no successful collection yet:
+
+```powershell
+.\venv\Scripts\python.exe lq_update.py roster-info --all-leagues --roster-updated-before "2026-10-12" --skip-photo
+```
+
+`--roster-updated-before` accepts `YYYY-MM-DD` (midnight) or
+`YYYY-MM-DD HH:MM:SS`, with a strict earlier-than comparison. Failed attempts
+do not advance the last successful collection time. `--missing-only` further
+restricts this to teams without any successful roster batch; omit it when
+refreshing previously collected teams. The equivalent direct call is
+`update_roster_info(all_leagues=True, updated_before="2026-10-12", fetch_photos=False)`.
+
 `technical` writes raw tech data, player match stats, and team stats into
 `lq_teamtechnic_period`; `period=0` is full game and `period=1..4` are quarters.
 The full-game rows also include Titan's live team supplement fields:
@@ -164,8 +190,12 @@ The full-game rows also include Titan's live team supplement fields:
 `text-live` writes raw text-live data and play-by-play event rows. `enrichment`
 runs both. `enrichment-pending` selects matches whose `technical_f` or
 `textlive_f` is still `0/1`; pass `--league-id` to limit it to one league and
-`--season-count` to limit that league to recent seasons. A normal successful
-request marks finished matches as `2`, even when Titan returns no team stats,
+`--season-count` to limit that league to recent seasons.
+`--all-leagues --season-count 2` selects the two latest locally stored seasons
+for each league, without fetching every league's season JS. Supplying
+`--season-count` disables the default date window; add `--start-time` and
+`--until-time` when you want a narrow incremental run instead of a two-season
+backfill. A normal successful request marks finished matches as `2`, even when Titan returns no team stats,
 no player stats, or no event rows. Use `teamtechnic_has_data`,
 `playertechnic_has_data`, and `textlive_has_data` on `lq_schedule` to distinguish
 normal completion with data from normal completion without data. Running

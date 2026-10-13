@@ -513,7 +513,8 @@ def update_roster_info(
         fetch_photos=True,
         league_id=None,
         league_ids=None,
-        all_leagues=False):
+        all_leagues=False,
+        updated_before=None):
     from lq.service.roster import update_all_team_rosters, update_team_roster
 
     if team_id is not None:
@@ -527,6 +528,7 @@ def update_roster_info(
                 missing_only=missing_only,
                 fetch_photos=fetch_photos,
                 league_id=resolved_league_id,
+                updated_before=updated_before,
             )
         return results
     return update_all_team_rosters(
@@ -535,6 +537,7 @@ def update_roster_info(
         missing_only=missing_only,
         fetch_photos=fetch_photos,
         league_id=league_id,
+        updated_before=updated_before,
     )
 
 
@@ -1121,6 +1124,27 @@ def _league_recent_season_where(league_ids, season_count, sql_util):
     return "({})".format(" or ".join(clauses)) if clauses else None
 
 
+def _all_league_recent_season_where(season_count, sql_util):
+    season_limit = int(season_count)
+    if season_limit <= 0:
+        raise ValueError("season_count must be greater than 0")
+    rows = sql_util.select_rows(
+        "SELECT leagueId,matchSeason,MAX(matchTime) AS lastMatchTime "
+        "FROM lq_schedule GROUP BY leagueId,matchSeason "
+        "ORDER BY leagueId ASC,lastMatchTime DESC,matchSeason DESC"
+    )
+    seasons_by_league = {}
+    for league_id, season, _last_match_time in rows:
+        seasons = seasons_by_league.setdefault(int(league_id), [])
+        if len(seasons) < season_limit:
+            seasons.append(str(season))
+    clauses = []
+    for league_id, seasons in seasons_by_league.items():
+        quoted_seasons = ",".join("'{}'".format(sql_util.safe(value)) for value in seasons)
+        clauses.append("(leagueId={0} and matchSeason in ({1}))".format(league_id, quoted_seasons))
+    return "({})".format(" or ".join(clauses)) if clauses else "(1=0)"
+
+
 def _ensure_recent_season_or_error(league_id, season, recent_seasons=None):
     recent = recent_seasons or _resolve_recent_seasons(league_id)
     requested_values = set(_season_values(season))
@@ -1388,6 +1412,8 @@ def update_enrichment_pending(
             season_values.extend(_season_values(recent_season))
         quoted_seasons = ",".join("'{}'".format(sql_util.safe(value)) for value in sorted(set(season_values)))
         where.append("matchSeason in ({})".format(quoted_seasons))
+    elif all_leagues and season_count is not None:
+        where.append(_all_league_recent_season_where(season_count, sql_util))
     elif resolved_league_ids and season_count is not None:
         season_where = _league_recent_season_where(resolved_league_ids, season_count, sql_util)
         if season_where is not None:
@@ -1509,7 +1535,11 @@ def main():
     parser.add_argument(
         "--missing-only",
         action="store_true",
-        help="For roster-info, only update teams without active player-team relation rows.",
+        help="For roster-info, only update teams without a successful roster batch.",
+    )
+    parser.add_argument(
+        "--roster-updated-before",
+        help="For roster-info, include teams whose last successful roster collection is before this local date/time, or never succeeded.",
     )
     parser.add_argument(
         "--skip-photo",
@@ -1706,6 +1736,7 @@ def main():
             league_id=args.league_id,
             league_ids=args.league_ids,
             all_leagues=args.all_leagues,
+            updated_before=args.roster_updated_before,
         )
     elif args.stage == "photo-info":
         update_player_photo_info(
@@ -1840,11 +1871,11 @@ if __name__ == '__main__':
 
         # update_schedule_js_active(league_ids=(2, 5, 7), season_count=3)
          # update_schedule_js()
-        update_schedule_js_active(all_leagues=True, season_count=3)
-        update_schedule()
-        update_score()
-        update_odds()
-        update_details()
+        # update_schedule_js_active(all_leagues=True, season_count=3)
+        # update_schedule()
+        # update_score()
+        # update_odds()
+        # update_details()
 
         # all_leagues=True
 
@@ -1852,10 +1883,11 @@ if __name__ == '__main__':
 
        
         # update_enrichment_pending()
-        # update_enrichment_pending(league_id=2, season_count=3)
-        # update_enrichment_pending(all_leagues=True)
+        # update_enrichment_pending(league_id=22, season_count=2)
+        update_enrichment_pending(all_leagues=True,season_count=2,start_match_time="2025-01-01 00:00:00",until_match_time="2026-10-30 23:59:59")
 
         # Optional league/team/player basic information tasks.
 
         # update_basic_info(all_leagues=True)
+        # update_roster_info(all_leagues=True, missing_only=False, fetch_photos=False)
         # update_roster_info(all_leagues=True,missing_only=True, fetch_photos=False)
