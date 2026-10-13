@@ -7,7 +7,32 @@ if "js2py" not in sys.modules:
     js2py_stub.EvalJs = object
     sys.modules["js2py"] = js2py_stub
 
-from lq.service.technical import Technical, _new_capture_metadata
+from lq.service.technical import Technical, _new_capture_metadata, _qualify_player_plus_minus
+
+
+def test_all_zero_match_plus_minus_is_unknown_before_persistence():
+    rows = [
+        {"teamID": 1, "plusMinus": 0},
+        {"teamID": 2, "plusMinus": 0},
+    ]
+    _qualify_player_plus_minus(rows)
+    assert [row["plusMinus"] for row in rows] == [None, None]
+
+
+def test_mixed_match_keeps_real_zero_and_signed_plus_minus():
+    rows = [
+        {"teamID": 1, "plusMinus": 0},
+        {"teamID": 1, "plusMinus": 4},
+        {"teamID": 2, "plusMinus": -4},
+    ]
+    _qualify_player_plus_minus(rows)
+    assert [row["plusMinus"] for row in rows] == [0, 4, -4]
+
+
+def test_missing_and_zero_plus_minus_remain_unknown():
+    rows = [{"plusMinus": None}, {"plusMinus": 0}]
+    _qualify_player_plus_minus(rows)
+    assert [row["plusMinus"] for row in rows] == [None, None]
 
 
 def test_technical_match_propagates_one_capture_to_all_structured_rows(monkeypatch):

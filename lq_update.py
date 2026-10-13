@@ -1479,6 +1479,8 @@ def main():
             "technical",
             "text-live",
             "league-info",
+            "league-txtlive-capability",
+            "backfill-league-txtlive-capability",
             "team-info",
             "basic-info",
             "roster-info",
@@ -1496,6 +1498,10 @@ def main():
     )
     parser.add_argument("request_text", nargs="*", help="Natural-language request for the request stage.")
     parser.add_argument("--league-id", type=int, help="Titan basketball league/SclassID.")
+    parser.add_argument("--txtlive-status", choices=["unknown", "available", "unavailable"])
+    parser.add_argument("--txtlive-sample-count", type=int, default=0)
+    parser.add_argument("--txtlive-event-match-count", type=int, default=0)
+    parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument(
         "--league-ids",
         help="Comma-separated Titan basketball league/SclassID list, for example 2,5,7.",
@@ -1701,13 +1707,31 @@ def main():
     elif args.stage == "technical":
         if args.schedule_id is None:
             parser.error("technical requires --schedule-id")
-        update_match_technical(args.schedule_id, force=args.force)
+        result = update_match_technical(args.schedule_id, force=args.force)
+        if not result.get("request_ok"):
+            raise SystemExit(1)
     elif args.stage == "text-live":
         if args.schedule_id is None:
             parser.error("text-live requires --schedule-id")
         update_match_text_live(args.schedule_id, force=args.force)
     elif args.stage == "league-info":
         update_league_info(league_id=args.league_id, version=args.version)
+    elif args.stage == "league-txtlive-capability":
+        if args.league_id is None or args.txtlive_status is None:
+            parser.error("league-txtlive-capability requires --league-id and --txtlive-status")
+        from lq.service.league import update_league_txtlive_capability
+        result = update_league_txtlive_capability(
+            args.league_id, args.txtlive_status,
+            sample_count=args.txtlive_sample_count,
+            event_match_count=args.txtlive_event_match_count,
+        )
+        print(json.dumps(result, ensure_ascii=False))
+        if result.get("status") != "updated":
+            raise SystemExit(1)
+    elif args.stage == "backfill-league-txtlive-capability":
+        from lq.service.league import backfill_league_txtlive_capability
+        result = backfill_league_txtlive_capability(batch_size=args.batch_size)
+        print(json.dumps(result, ensure_ascii=False))
     elif args.stage == "team-info":
         if args.league_id is None:
             parser.error("team-info requires --league-id")

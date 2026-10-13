@@ -27,6 +27,11 @@ LEAGUE_METADATA_COLUMNS = {
     "source_url_or_operation": "ADD COLUMN `source_url_or_operation` varchar(255) CHARACTER SET utf8 NULL",
     "collection_status": "ADD COLUMN `collection_status` varchar(32) CHARACTER SET utf8 NULL",
     "has_data": "ADD COLUMN `has_data` tinyint(4) NULL",
+    "txtlive_source_capability": "ADD COLUMN `txtlive_source_capability` varchar(32) CHARACTER SET utf8 NULL",
+    "txtlive_capability_observed_at": "ADD COLUMN `txtlive_capability_observed_at` datetime NULL",
+    "txtlive_capability_sample_count": "ADD COLUMN `txtlive_capability_sample_count` int NULL",
+    "txtlive_capability_event_match_count": "ADD COLUMN `txtlive_capability_event_match_count` int NULL",
+    "txtlive_capability_source": "ADD COLUMN `txtlive_capability_source` varchar(64) CHARACTER SET utf8 NULL",
 }
 
 
@@ -551,6 +556,97 @@ def ensure_basic_information_schema():
     from scripts.migrate_lq_basic_information_tables import migrate
 
     migrate()
+
+
+def update_league_txtlive_capability(league_id, status, *, sample_count=0,
+                                     event_match_count=0, source="sports_engine"):
+    """Persist the data-layer's league-level txtlive capability observation."""
+    status = str(status or "").strip()
+    if status not in {"unknown", "available", "unavailable"}:
+        raise ValueError("invalid_txtlive_source_capability")
+    _ensure_lq_league_metadata_schema()
+    exists = sql_util.select("SELECT leagueID FROM lq_league WHERE leagueID={0}".format(int(league_id)))
+    if not exists:
+        return {"status": "league_not_found", "league_id": int(league_id)}
+    now = _now()
+    sql_util.upData("lq_league", {
+        "txtlive_source_capability": status,
+        "txtlive_capability_observed_at": now,
+        "txtlive_capability_sample_count": int(sample_count or 0),
+        "txtlive_capability_event_match_count": int(event_match_count or 0),
+        "txtlive_capability_source": str(source or "sports_engine"),
+    }, {"leagueID": int(league_id)})
+    return {"status": "updated", "league_id": int(league_id),
+            "txtlive_source_capability": status,
+            "observed_at": now}
+
+
+def backfill_league_txtlive_capability(*, batch_size=500, source="database_txtlive_backfill"):
+    """Mark leagues with positive evidence already persisted in ``lq_textlive``.
+
+    The query starts from distinct event-bearing match IDs and maps them to
+    schedules in bounded batches. This avoids the unbounded schedule/event join
+    that can time out on the historical database. Only positive evidence is
+    written; leagues without rows are left untouched and therefore remain
+    ``unknown`` (or retain an existing marker).
+    """
+    if type(batch_size) is not int or batch_size < 1 or batch_size > 5000:
+        raise ValueError("invalid_batch_size")
+    _ensure_lq_league_metadata_schema()
+    event_rows = sql_util.select_dicts(
+        "SELECT DISTINCT matchID AS match_id FROM lq_textlive "
+        "WHERE matchID IS NOT NULL"
+    )
+    match_ids = [int(row["match_id"]) for row in event_rows if row.get("match_id") is not None]
+    by_league = {}
+    for offset in range(0, len(match_ids), batch_size):
+        chunk = match_ids[offset:offset + batch_size]
+        rows = sql_util.select_dicts(
+            "SELECT DISTINCT matchId AS match_id, leagueId AS league_id "
+            "FROM lq_schedule WHERE matchId IN ({0}) AND leagueId IS NOT NULL".format(
+                ",".join(str(value) for value in chunk)
+            )
+        )
+        for row in rows:
+            league_id = row.get("league_id")
+            if league_id is None:
+                continue
+            by_league.setdefault(int(league_id), set()).add(int(row["match_id"]))
+    updated = []
+    for league_id, covered_matches in sorted(by_league.items()):
+        result = update_league_txtlive_capability(
+            league_id,
+            "available",
+            sample_count=len(covered_matches),
+            event_match_count=len(covered_matches),
+            source=source,
+        )
+        if result.get("status") == "updated":
+            updated.append({"league_id": league_id, "event_match_count": len(covered_matches)})
+    migrated = []
+    legacy_rows = sql_util.select_dicts(
+        "SELECT leagueID AS league_id, txtlive_source_capability AS capability "
+        "FROM lq_league WHERE txtlive_source_capability IN "
+        "('partial','none','source_unavailable')"
+    )
+    legacy_map = {"partial": "available", "none": "unavailable", "source_unavailable": "unknown"}
+    for row in legacy_rows:
+        league_id = row.get("league_id")
+        target_status = legacy_map.get(row.get("capability"))
+        if league_id is None or target_status is None:
+            continue
+        sql_util.upData("lq_league", {
+            "txtlive_source_capability": target_status,
+        }, {"leagueID": int(league_id)})
+        migrated.append({"league_id": int(league_id), "from": row.get("capability"), "to": target_status})
+    return {
+        "status": "completed",
+        "event_match_count": len(match_ids),
+        "league_count": len(updated),
+        "updated": updated,
+        "migrated_legacy_markers": migrated,
+        "unchanged_leagues": "leagues_without_persisted_txtlive_rows_not_modified",
+    }
 
 
 def _ensure_lq_league_metadata_schema():

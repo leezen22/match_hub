@@ -23,5 +23,6 @@
                 "Bypass"
             ]
         }
-    }
+    },
+    "python-envs.defaultEnvManager": "ms-python.python:pyenv"
 }

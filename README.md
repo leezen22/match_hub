@@ -162,6 +162,12 @@ technical statistics, or event timelines.
 
 Run basketball single-match enrichment:
 
+For an existing team-period schema with `rawData varchar(255)`, use the
+non-destructive `--team-period-raw-data-only` migration to widen it to `TEXT`.
+It preserves longer text types and verifies the result. The full migration
+contains unrelated legacy table operations and is not needed for this repair.
+The `technical` command exits nonzero when collection or persistence fails.
+
 ```powershell
 .\venv\Scripts\python.exe scripts\migrate_lq_technical_event_tables.py
 .\venv\Scripts\python.exe lq_update.py technical --schedule-id 705106

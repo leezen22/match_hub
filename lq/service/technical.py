@@ -151,6 +151,7 @@ class Technical(object):
         if include_players:
             result['players'].extend(Technical._parse_player_technical(matchdata, tech_data[1], is_home=1))
             result['players'].extend(Technical._parse_player_technical(matchdata, tech_data[2], is_home=0))
+            _qualify_player_plus_minus(result['players'])
         if len(tech_data) > 4:
             result['teamPeriodRows'] = Technical._parse_period_technical(matchdata, tech_data[4])
             result['teamPeriodRows'] = Technical._merge_full_team_rows(result['teamPeriodRows'], result['teams'])
@@ -495,6 +496,13 @@ def _sum_optional_int(left, right):
     if left_value is None and right_value is None:
         return None
     return (left_value or 0) + (right_value or 0)
+
+
+def _qualify_player_plus_minus(rows):
+    # A whole match of zeros carries no evidence that the source measured +/-.
+    if rows and not any(row.get('plusMinus') not in (None, 0) for row in rows):
+        for row in rows:
+            row['plusMinus'] = None
 
 
 def _new_capture_metadata(request_ok):

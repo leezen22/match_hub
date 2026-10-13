@@ -1,4 +1,5 @@
 import sys
+import argparse
 from pathlib import Path
 
 
@@ -44,6 +45,22 @@ def _drop_columns(table, columns):
         pending.append("DROP COLUMN `{0}`".format(column))
     if pending:
         sql_util.sqlExecute("ALTER TABLE `{0}` {1}".format(table, ", ".join(pending)))
+
+
+def widen_team_period_raw_data():
+    """Preserve complete source sections without running unrelated migrations."""
+    rows = sql_util.select_dicts("SHOW COLUMNS FROM `lq_teamtechnic_period` LIKE 'rawData'")
+    if len(rows) != 1:
+        raise RuntimeError("lq_teamtechnic_period.rawData column missing or ambiguous")
+    column_type = rows[0]["Type"].lower()
+    if column_type in {"text", "mediumtext", "longtext"}:
+        return
+    if not column_type.startswith("varchar("):
+        raise RuntimeError("Unexpected rawData type: " + column_type)
+    sql_util.sqlExecute("ALTER TABLE `lq_teamtechnic_period` MODIFY COLUMN `rawData` TEXT NULL")
+    verified = sql_util.select_dicts("SHOW COLUMNS FROM `lq_teamtechnic_period` LIKE 'rawData'")
+    if len(verified) != 1 or verified[0]["Type"].lower() != "text":
+        raise RuntimeError("rawData widening did not persist")
 
 
 def migrate():
@@ -186,7 +203,7 @@ def migrate():
           `remainingPause` smallint(6) NULL,
           `twoPointScore` smallint(6) NULL,
           `threePointScore` smallint(6) NULL,
-          `rawData` varchar(255) NULL,
+          `rawData` text NULL,
           `rawCaptureID` varchar(36) NULL,
           `createTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
           `updateTime` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -334,4 +351,11 @@ def _migrate_teamtechnic_period_indexes():
 
 
 if __name__ == "__main__":
-    migrate()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--team-period-raw-data-only", action="store_true")
+    args = parser.parse_args()
+    if args.team_period_raw_data_only:
+        widen_team_period_raw_data()
+    else:
+        migrate()
+        widen_team_period_raw_data()
