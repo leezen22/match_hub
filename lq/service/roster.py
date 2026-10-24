@@ -11,6 +11,7 @@ from lq.service.team import _asset_url, _int_or_none, _parse_datetime, _short_se
 from scripts.migrate_lq_basic_information_tables import migrate
 from utils import js2pyUtil, sql_util
 from utils.webUtil import WebUtil
+from lq.service.player_identity import ensure_player_identity, identity_transaction
 
 
 SOURCE_NAMESPACE = "titan_basketball"
@@ -532,12 +533,19 @@ def _upsert_player_profile(row):
             "has_data",
         ]
     }
-    condition = {"source_namespace": SOURCE_NAMESPACE, "source_entity_id": row["source_entity_id"]}
-    result = sql_util.select_table_dicts("lq_player_profile", ["playerID", "playerPic"], condition)
-    if len(result) > 0:
-        sql_util.upData("lq_player_profile", _player_profile_update_payload(profile, result[0]), condition)
-    else:
-        sql_util.insertData("lq_player_profile", profile)
+    if (row.get('source_namespace') != SOURCE_NAMESPACE
+            or row.get('source_entity_id') != str(row.get('playerID'))):
+        raise ValueError('player profile source identity mismatch')
+    def update_profile(cursor):
+        public_id = ensure_player_identity(cursor, row['playerID'], row)
+        cursor.execute('SELECT playerPic FROM lq_player_profile WHERE id=%s FOR UPDATE', (public_id,))
+        existing = {'playerPic': cursor.fetchone()[0]}
+        payload = _player_profile_update_payload(profile, existing)
+        # Identity columns and the public primary key never participate in updates.
+        for key in ('id', 'playerID', 'source_namespace', 'source_entity_id'):
+            payload.pop(key, None)
+        cursor.execute(sql_util.get_u_sql('lq_player_profile', payload, {'id': public_id}))
+    identity_transaction(update_profile)
 
 
 def _upsert_roster_batch(snapshot_batch_id, league_id, team_id, season, roster_hash, captured_at, recorded_at,

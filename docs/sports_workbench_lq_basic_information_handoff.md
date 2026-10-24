@@ -1,6 +1,6 @@
 # Sports Workbench Basketball Basic Information Handoff
 
-更新时间：2026-07-20
+更新时间：2026-10-24
 
 ## 责任边界
 
@@ -15,7 +15,34 @@ Sports Workbench 只读消费这些表，并自行处理身份绑定、时序关
 - Titan 球队外部 ID：`lq_team.teamID` / `source_entity_id`
 - Titan 球员外部 ID：`lq_player_profile.playerID` / `source_entity_id`
 - `lq_team.id` 是本地自增主键，仅用于本库内部隔离外部 ID，不代表 canonical team identity。
-- `lq_player_profile.id` 是本地自增主键，仅用于本库内部隔离外部 ID，不代表 canonical player identity。
+- `lq_player_profile.id` 是本地自增主键，也是现行公开接口的稳定 `player_id`；不得重建、重编号或在补齐档案时重新分配。它不表示跨来源身份已经合并。
+
+### 技术统计触发最小球员身份登记
+
+`lq_update.py technical` 经 `Technical.upMatchTechnical()` 写入原始技术包后，先按
+`(source_namespace, source_entity_id)` 登记/复用球员身份，再持久化技术行。
+`source_entity_id` 对应 Titan `playerID`。登记复用现有唯一索引，支持并发；数据库死锁或锁超时最多尝试三次。
+完整 roster 档案更新沿用同一登记函数，随后补充原记录，始终保留 `id`。
+
+新建最小档案标为 `collection_status='identity_only', has_data=0`，只登记源 ID、源姓名和登记来源；
+出生日期、身高、位置、球衣号码、`activeStatus` 等均留空。历史技术事实不用于推断当前阵容、availability 或当前资料。
+资料状态与身份是否存在分离，`identity_only` 不代表档案采集成功。
+
+无有效源 ID、源标记 `isUnknown=1` 或身份冲突时，不按姓名猜配；原始包和技术事实仍保留，
+返回 `identity_diagnostics` 并输出 `PLAYER_IDENTITY_DIAGNOSTICS`。
+数据库登记异常时保留已保存的原始包及之前的技术行，返回失败和 `retry_required`，避免上层标为更新完成。
+
+存量修复（默认只审计）：
+
+```bash
+venv/bin/python scripts/repair_lq_player_identities.py --report /tmp/player_identity_audit.json
+venv/bin/python scripts/repair_lq_player_identities.py --execute --report /tmp/player_identity_repair.json
+```
+
+脚本核对技术原始行中的精确源 ID，并要求至少一个原始技术包中的球员段与之吻合；
+已有 capture 绑定时还需匹配 capture。证据不足、标记未知、冲突者列入报告待核查。
+脚本只补建身份，不更新技术表、roster 或冻结资产；报告包括原始包 SHA-256、公开 ID、
+修复前后覆盖、旧 ID 保持情况和技术表校验值。执行后仍有缺口时退出码为 1，应阅读报告，勿视为全部失败。
 
 ## 时间语义
 

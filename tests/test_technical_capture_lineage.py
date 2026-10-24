@@ -97,6 +97,7 @@ def test_failed_fetch_does_not_create_capture_metadata():
 
 
 def test_technical_persistence_keeps_raw_and_structured_capture_binding(monkeypatch):
+    monkeypatch.setattr('lq.service.technical.register_technical_identities', lambda *args: [])
     capture_id = "technical-capture-1"
     raw_writes = []
     structured_writes = []

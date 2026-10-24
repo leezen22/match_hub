@@ -1274,7 +1274,12 @@ def update_match_technical(schedule_id, force=False, match_state=None):
     resolved_match_state = match_state if match_state is not None else state.get("matchState")
     has_team_data = result.get("periods", 0) > 0
     has_player_data = result.get("players", 0) > 0
-    next_flag = _flag_after_collect(result, resolved_match_state, has_team_data or has_player_data)
+    identity_retry_required = any(
+        item.get("retry_required") for item in result.get("identity_diagnostics", [])
+    )
+    next_flag = None if identity_retry_required else _flag_after_collect(
+        result, resolved_match_state, has_team_data or has_player_data
+    )
     if next_flag is not None:
         sql_util.upData('lq_schedule', {
             'technical_f': next_flag,
@@ -1912,6 +1917,6 @@ if __name__ == '__main__':
 
         # Optional league/team/player basic information tasks.
 
-        # update_basic_info(all_leagues=True)
-        # update_roster_info(all_leagues=True, missing_only=False, fetch_photos=False)
-        # update_roster_info(all_leagues=True,missing_only=True, fetch_photos=False)
+        update_basic_info(all_leagues=True)
+        update_roster_info(all_leagues=True, missing_only=False, fetch_photos=False)
+        update_roster_info(all_leagues=True,missing_only=True, fetch_photos=False)

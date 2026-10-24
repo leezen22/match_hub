@@ -5,6 +5,7 @@ from config import lqconfig_qt
 from utils import sql_util
 from utils.js2pyUtil import logLine
 from utils.webUtil import WebUtil
+from lq.service.player_identity import register_technical_identities
 
 TITAN_ENRICHMENT_TIMEOUT = (30, 60)
 
@@ -71,6 +72,7 @@ class Technical(object):
 
         result = Technical.technical_match(matchs[0], include_players=True)
         persist_ok = True
+        identity_diagnostics = []
         if result.get('rawTech') != '':
             persist_ok = sql_util.replace_table_row('lq_matchtechnic_raw', {'scheduleID': scheduleID}, {
                 'scheduleID': scheduleID,
@@ -89,11 +91,23 @@ class Technical(object):
                 persist_ok = False
                 result['teamPeriodRows'] = []
         if len(result['players']) > 0:
-            if not sql_util.replace_table_rows('lq_playertechnic', {'scheduleID': scheduleID}, result['players']):
+            try:
+                if not persist_ok:
+                    raise RuntimeError('raw_or_team_persistence_failed; preserve previous player facts for retry')
+                identity_diagnostics = register_technical_identities(result['players'], result.get('sourceUrl'))
+                players_ok = sql_util.replace_table_rows('lq_playertechnic', {'scheduleID': scheduleID}, result['players'])
+            except Exception as error:
+                identity_diagnostics.append({'scheduleID': scheduleID, 'reason': str(error),
+                                             'retry_required': True})
+                players_ok = False
+            if not players_ok:
                 persist_ok = False
                 result['players'] = []
+        if identity_diagnostics:
+            print('PLAYER_IDENTITY_DIAGNOSTICS scheduleID={0} details={1}'.format(scheduleID, identity_diagnostics))
         return {'state': 1 if result['requestOk'] and persist_ok else 0,
                 'request_ok': result['requestOk'] and persist_ok,
+                'identity_diagnostics': identity_diagnostics,
                 'teams': len(result['teams']), 'players': len(result['players']), 'periods': len(result['teamPeriodRows'])}
 
     @staticmethod
