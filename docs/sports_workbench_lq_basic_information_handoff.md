@@ -32,6 +32,10 @@ Sports Workbench 只读消费这些表，并自行处理身份绑定、时序关
 返回 `identity_diagnostics` 并输出 `PLAYER_IDENTITY_DIAGNOSTICS`。
 数据库登记异常时保留已保存的原始包及之前的技术行，返回失败和 `retry_required`，避免上层标为更新完成。
 
+`update_match_technical()` 仅在请求、落库成功且 `matchState=-1`（完场）时将 `technical_f` 标为完成。
+成功但未完场时保持可刷新，失败时保留原标记。是否返回技术行不替代成功及完场条件；
+`update_enrichment_pending()` 不再将“可刷新但无技术行”的比赛直接标为完成。
+
 存量修复（默认只审计）：
 
 ```bash

@@ -45,3 +45,29 @@ def test_technical_cli_propagates_persistence_status(monkeypatch, request_ok):
         with pytest.raises(SystemExit) as error:
             lq_update.main()
         assert error.value.code == 1
+
+
+@pytest.mark.parametrize('match_state', [-1, '-1', -4, 0, 4])
+@pytest.mark.parametrize('request_ok', [True, False])
+@pytest.mark.parametrize('has_data', [True, False])
+def test_technical_completion_requires_success_and_finished_match(monkeypatch, match_state, request_ok, has_data):
+    from lq.service.technical import Technical
+    from utils import sql_util
+
+    writes = []
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': match_state, 'technical_f': lq_update.ENRICHMENT_FLAG_PENDING,
+    })
+    monkeypatch.setattr(Technical, 'upMatchTechnical', lambda sid: {
+        'request_ok': request_ok, 'players': 22 if has_data else 0,
+        'periods': 2 if has_data else 0, 'teams': 2 if has_data else 0,
+    })
+    monkeypatch.setattr(sql_util, 'upData', lambda table, row, condition: writes.append(row))
+    result = lq_update.update_match_technical(663734)
+    assert result['request_ok'] is request_ok
+    if not request_ok:
+        assert writes == []
+    else:
+        expected = lq_update.ENRICHMENT_FLAG_DONE if str(match_state) == '-1' else lq_update.ENRICHMENT_FLAG_REFRESHABLE
+        assert writes[0]['technical_f'] == expected
+        assert writes[0]['teamTech'] == int(expected == lq_update.ENRICHMENT_FLAG_DONE and has_data)

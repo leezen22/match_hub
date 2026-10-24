@@ -51,6 +51,16 @@ class BasketballEnrichmentPendingTest(unittest.TestCase):
             clause = lq_update._all_league_recent_season_where(2, sql_util)
         self.assertEqual(clause, "(1=0)")
 
+    def test_pending_does_not_mark_empty_technical_complete_without_collection(self):
+        with patch.object(sql_util, 'select_dicts', return_value=[
+            {'Field': 'technical_f'}, {'Field': 'textlive_f'}
+        ]), patch.object(sql_util, 'sqlExecute') as execute, patch.object(
+            sql_util, 'select_rows', return_value=[(101,)]
+        ), patch.object(lq_update, 'update_match_enrichment') as update:
+            lq_update.update_enrichment_pending(all_leagues=True, limit=1)
+        assert all('SET technical_f=' not in call.args[0] for call in execute.call_args_list)
+        update.assert_called_once_with(101)
+
     def test_invalid_season_count_fails_before_query(self):
         with patch.object(sql_util, "select_rows") as select:
             with self.assertRaises(ValueError):

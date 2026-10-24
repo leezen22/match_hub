@@ -1277,9 +1277,12 @@ def update_match_technical(schedule_id, force=False, match_state=None):
     identity_retry_required = any(
         item.get("retry_required") for item in result.get("identity_diagnostics", [])
     )
-    next_flag = None if identity_retry_required else _flag_after_collect(
-        result, resolved_match_state, has_team_data or has_player_data
-    )
+    next_flag = None
+    if result.get("request_ok") and not identity_retry_required:
+        next_flag = (
+            ENRICHMENT_FLAG_DONE if str(resolved_match_state) == "-1"
+            else ENRICHMENT_FLAG_REFRESHABLE
+        )
     if next_flag is not None:
         sql_util.upData('lq_schedule', {
             'technical_f': next_flag,
@@ -1363,15 +1366,6 @@ def update_enrichment_pending(
         print("enrichment pending update skipped, run scripts/migrate_lq_technical_event_tables.py first")
         return []
 
-    sql_util.sqlExecute(
-        "UPDATE lq_schedule SET technical_f={done} "
-        "WHERE technical_f={refreshable} "
-        "AND COALESCE(teamtechnic_has_data,0)=0 "
-        "AND COALESCE(playertechnic_has_data,0)=0".format(
-            done=ENRICHMENT_FLAG_DONE,
-            refreshable=ENRICHMENT_FLAG_REFRESHABLE,
-        )
-    )
     sql_util.sqlExecute(
         "UPDATE lq_schedule SET textlive_f={done} "
         "WHERE textlive_f={refreshable} "
