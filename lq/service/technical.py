@@ -162,9 +162,10 @@ class Technical(object):
             away_team['loseScore'] = _to_int(home_team.get('score'))
             result['teams'] = [home_team, away_team]
 
+        parsed_players = (Technical._parse_player_technical(matchdata, tech_data[1], is_home=1)
+                          + Technical._parse_player_technical(matchdata, tech_data[2], is_home=0))
         if include_players:
-            result['players'].extend(Technical._parse_player_technical(matchdata, tech_data[1], is_home=1))
-            result['players'].extend(Technical._parse_player_technical(matchdata, tech_data[2], is_home=0))
+            result['players'] = parsed_players
             _qualify_player_plus_minus(result['players'])
         if len(tech_data) > 4:
             result['teamPeriodRows'] = Technical._parse_period_technical(matchdata, tech_data[4])
@@ -173,6 +174,8 @@ class Technical(object):
             result['teamPeriodRows'] = Technical._merge_supplemental_team_tech(result['teamPeriodRows'], tech_data[3])
         if len(result['teamPeriodRows']) == 0 and len(result['teams']) == 2:
             result['teamPeriodRows'] = Technical._team_rows_to_period_rows(result['teams'])
+        result['teamPeriodRows'] = Technical._correct_player_shooting_totals(
+            result['teamPeriodRows'], parsed_players)
         for row in result['teamPeriodRows'] + result['players']:
             row['rawCaptureID'] = result['captureID']
         return result
@@ -378,8 +381,15 @@ class Technical(object):
         has_full_away = False
         for row in period_rows:
             if row.get('period') == 0 and row.get('isHome') in team_by_home:
-                full_row = dict(team_by_home[row.get('isHome')])
+                team = team_by_home[row.get('isHome')]
+                full_row = dict(team)
                 full_row.update({key: value for key, value in row.items() if value is not None})
+                # Fix only the known FG-as-3P defect, using valid explicit
+                # shooting totals with matching 3P. Unrelated small conflicts
+                # do not block this correction or change other statistics.
+                if Technical._verified_full_game_shooting(team, row, period_rows):
+                    for field in ('shoot_Hit', 'shoot'):
+                        full_row[field] = team[field]
                 row = full_row
                 if row.get('isHome') == 1:
                     has_full_home = True
@@ -393,6 +403,45 @@ class Technical(object):
                 if key not in existing:
                     merged.append(full_row)
         return merged
+
+    @staticmethod
+    def _verified_full_game_shooting(team, comparison, period_rows):
+        fields = ('shoot_Hit', 'shoot', 'threeMin_Hit', 'threeMin')
+        if any(type(team.get(f)) is not int or team[f] < 0 for f in fields):
+            return False
+        if not (team['threeMin_Hit'] <= team['shoot_Hit'] <= team['shoot'] and
+                team['threeMin_Hit'] <= team['threeMin'] <= team['shoot']):
+            return False
+        if any(comparison.get(f) != team[f] for f in fields[2:]):
+            return False
+        return (comparison.get('shoot_Hit') == comparison['threeMin_Hit']
+                and comparison.get('shoot') == comparison['threeMin']
+                and comparison['shoot'] > 0
+                and any(team[f] != comparison[f] for f in fields[:2]))
+
+    @staticmethod
+    def _correct_player_shooting_totals(team_rows, player_rows):
+        fields = ('shoot_Hit', 'shoot', 'threeMin_Hit', 'threeMin')
+        result = []
+        for original in team_rows:
+            row = dict(original)
+            result.append(row)
+            if row.get('period') != 0:
+                continue
+            players = [p for p in player_rows if p.get('teamID') == row.get('teamID')
+                       and p.get('scheduleID') == row.get('scheduleID')]
+            if (not players or any(type(p.get('playerID')) is not int or p['playerID'] <= 0 for p in players)
+                    or len({p['playerID'] for p in players}) != len(players)):
+                continue
+            if any(type(p.get(f)) is not int or p[f] < 0 for p in players for f in fields):
+                continue
+            if any(not (p['threeMin_Hit'] <= p['shoot_Hit'] <= p['shoot'] and
+                        p['threeMin_Hit'] <= p['threeMin'] <= p['shoot']) for p in players):
+                continue
+            totals = {f: sum(p[f] for p in players) for f in fields}
+            if Technical._verified_full_game_shooting(totals, row, []):
+                row['shoot_Hit'], row['shoot'] = totals['shoot_Hit'], totals['shoot']
+        return result
 
     @staticmethod
     def _merge_supplemental_team_tech(period_rows, supplemental_data):
