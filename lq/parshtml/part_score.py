@@ -15,9 +15,10 @@ def get_PartScore(matchid):
 
     matchdict = {}
     Addtimes = ['Add1', 'Add2', 'Add3', 'Add4', 'Add5']
-    url = lqconfig_qt.techtxtlive + '?' + 'matchid=' + str(matchid)
+    url = lqconfig_qt.techtxtlive.replace('http://', 'https://', 1) + '?matchid=' + str(matchid)
     # page = common_util.getWebContent('collect partscore', url, headers=lanqiu_config_qt.headers)
-    webresponse = WebUtil.requests_get(url, headers=lqconfig_qt.headers)
+    webresponse = WebUtil.requests_get(url, headers=lqconfig_qt.headers,
+                                       timeout=(30, 60), browser_tls=True)
     content = webresponse[1]
 
     if content != '' and webresponse[0] == 1:

@@ -66,21 +66,32 @@ def up_score_batch(scheduleIdArr):
     from lq.parshtml import part_score
     from utils import sql_util
 
-    updated_count = 0
-    skipped_count = 0
+    results = {}
     for matchID in scheduleIdArr:
-        partdDct = part_score.get_PartScore(matchID)
-        if len(partdDct) == 0:
-            skipped_count += 1
-            print("小节比分无可更新数据，跳过: " + str(matchID))
-            continue
-        sql_util.upData('lq_schedule', partdDct, {'scheduleID': matchID})
-        updated_count += 1
-    print("小节比分更新完成: matches={0}, updated={1}, skipped_empty={2}".format(
-        scheduleIdArr,
-        updated_count,
-        skipped_count,
-    ))
+        try:
+            partdict = part_score.get_PartScore(matchID)
+            if not partdict or "matchState" not in partdict:
+                results[matchID] = {"request_ok": False, "reason": "no_score_state"}
+                continue
+            sql_util.upData('lq_schedule', partdict, {'scheduleID': matchID})
+            # upData does not report write failures. Verify persisted source fields
+            # before allowing this observation to finish enrichment collection.
+            columns = list(partdict)
+            rows = sql_util.select_dicts(
+                "SELECT {0} FROM lq_schedule WHERE scheduleID={1}".format(
+                    ",".join("`{0}`".format(key) for key in columns), int(matchID)))
+            verified = len(rows) == 1 and all(
+                str(rows[0].get(key)) == str(value) for key, value in partdict.items())
+            results[matchID] = {"request_ok": verified,
+                                "match_state": partdict["matchState"] if verified else None,
+                                "reason": None if verified else "score_write_not_verified"}
+        except Exception as error:
+            results[matchID] = {"request_ok": False, "reason": "score_refresh_failed",
+                                "error_type": type(error).__name__}
+    print("小节比分更新完成: matches={0}, updated={1}, failed={2}".format(
+        scheduleIdArr, sum(item["request_ok"] for item in results.values()),
+        sum(not item["request_ok"] for item in results.values())))
+    return results
 
 
 def up_2in1Details_by_match(scheduleId,companyId, scope):
@@ -1237,12 +1248,9 @@ def _is_terminal_match_state(match_state):
 
 def _flag_after_collect(result, match_state, has_data):
     if not result.get("request_ok"):
-        if _is_terminal_match_state(match_state) and not has_data:
-            return ENRICHMENT_FLAG_DONE
         return None
-    if not has_data:
-        return ENRICHMENT_FLAG_DONE
-    return ENRICHMENT_FLAG_DONE if _is_terminal_match_state(match_state) else ENRICHMENT_FLAG_REFRESHABLE
+    return (ENRICHMENT_FLAG_DONE if str(match_state) == "-1"
+            else ENRICHMENT_FLAG_REFRESHABLE)
 
 
 def _match_enrichment_state(schedule_id):
@@ -1258,7 +1266,7 @@ def _match_enrichment_state(schedule_id):
     return rows[0]
 
 
-def update_match_technical(schedule_id, force=False, match_state=None):
+def update_match_technical(schedule_id, force=False, match_state=None, completion_allowed=True):
     from lq.service.technical import Technical
     from utils import sql_util
 
@@ -1280,7 +1288,7 @@ def update_match_technical(schedule_id, force=False, match_state=None):
     next_flag = None
     if result.get("request_ok") and not identity_retry_required:
         next_flag = (
-            ENRICHMENT_FLAG_DONE if str(resolved_match_state) == "-1"
+            ENRICHMENT_FLAG_DONE if completion_allowed and str(resolved_match_state) == "-1"
             else ENRICHMENT_FLAG_REFRESHABLE
         )
     if next_flag is not None:
@@ -1301,7 +1309,7 @@ def update_match_technical(schedule_id, force=False, match_state=None):
     return result
 
 
-def update_match_text_live(schedule_id, force=False, match_state=None):
+def update_match_text_live(schedule_id, force=False, match_state=None, completion_allowed=True):
     from lq.service.technical import Technical
     from utils import sql_util
 
@@ -1316,7 +1324,7 @@ def update_match_text_live(schedule_id, force=False, match_state=None):
     result = Technical.upMatchTextLive(schedule_id)
     resolved_match_state = match_state if match_state is not None else state.get("matchState")
     has_data = result.get("events", 0) > 0
-    next_flag = _flag_after_collect(result, resolved_match_state, has_data)
+    next_flag = _flag_after_collect(result, resolved_match_state if completion_allowed else None, has_data)
     if next_flag is not None:
         sql_util.upData('lq_schedule', {
             'textlive_f': next_flag,
@@ -1337,17 +1345,53 @@ def update_match_enrichment_task(schedule_id, include_technical=True, include_te
         print("enrichment update skipped, match not found: scheduleID={0}".format(schedule_id))
         return {"technical": None, "text_live": None, "skipped": True, "reason": "match_not_found"}
 
-    technical = None
-    text_live = None
-    if include_technical:
-        technical = update_match_technical(schedule_id, force=force, match_state=state.get("matchState"))
-    if include_text_live:
-        text_live = update_match_text_live(schedule_id, force=force, match_state=state.get("matchState"))
-    return {"technical": technical, "text_live": text_live}
+    score = up_score_batch([schedule_id]).get(schedule_id, {"request_ok": False})
+    completion_allowed = score.get("request_ok") is True
+    # Never use the stale pre-refresh state to close a new collection attempt.
+    match_state = score.get("match_state") if completion_allowed else None
+    results = {"score": score, "technical": None, "text_live": None}
+    for name, enabled, update in (
+            ("technical", include_technical, update_match_technical),
+            ("text_live", include_text_live, update_match_text_live)):
+        if enabled:
+            try:
+                results[name] = update(schedule_id, force=force, match_state=match_state,
+                                       completion_allowed=completion_allowed)
+            except Exception as error:
+                results[name] = {"request_ok": False, "reason": "collection_failed",
+                                 "error_type": type(error).__name__}
+    return results
 
 
 def update_match_enrichment(schedule_id, force=False):
     return update_match_enrichment_task(schedule_id, force=force)
+
+
+def update_match_facts(schedule_id, *, expected_match_id=None, force=False):
+    """Single basketball match refresh: identity, score, boxes and txtLive.
+
+    schedule_id is the source ID. expected_match_id guards an external caller's
+    canonical binding; collection decisions remain inside Match Hub.
+    """
+    from utils import sql_util
+
+    if type(schedule_id) is not int or schedule_id <= 0:
+        raise ValueError("positive_schedule_id_required")
+    if expected_match_id is not None and (type(expected_match_id) is not int or expected_match_id <= 0):
+        raise ValueError("positive_match_id_required")
+    if type(force) is not bool:
+        raise ValueError("force_must_be_boolean")
+    rows = sql_util.select_dicts(
+        "SELECT matchID FROM lq_schedule WHERE scheduleID={0}".format(schedule_id))
+    if len(rows) != 1:
+        raise ValueError("match_identity_missing_or_ambiguous")
+    if expected_match_id is not None and rows[0]["matchID"] != expected_match_id:
+        raise ValueError("writer_source_canonical_binding_mismatch")
+    result = update_match_enrichment(schedule_id, force=force)
+    result["request_ok"] = all(
+        isinstance(result.get(name), dict) and result[name].get("request_ok") is True
+        for name in ("score", "technical", "text_live"))
+    return result
 
 
 def update_enrichment_pending(
@@ -1365,15 +1409,6 @@ def update_enrichment_pending(
     if "technical_f" not in columns or "textlive_f" not in columns:
         print("enrichment pending update skipped, run scripts/migrate_lq_technical_event_tables.py first")
         return []
-
-    sql_util.sqlExecute(
-        "UPDATE lq_schedule SET textlive_f={done} "
-        "WHERE textlive_f={refreshable} "
-        "AND COALESCE(textlive_has_data,0)=0".format(
-            done=ENRICHMENT_FLAG_DONE,
-            refreshable=ENRICHMENT_FLAG_REFRESHABLE,
-        )
-    )
 
     should_apply_default_window = start_match_time is None and until_match_time is None and season is None and season_count is None
     if start_match_time is None and should_apply_default_window:

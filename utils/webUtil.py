@@ -60,7 +60,7 @@ class WebUtil(object):
     def requests_get(url, headers=None, timeout=5, isProxy=False, proxy=None,
                      retry_time=2, sleep=True, retry_interval=2,
                      isMobile=False, sourceName=None, encoding=None,
-                     trust_env=True):
+                     trust_env=True, browser_tls=False):
         state = 0
         content = ''
         ip = ''
@@ -86,7 +86,15 @@ class WebUtil(object):
                     headers['User-Agent'] = random.choice(common_config.web_agents)
             try:
                 start_time = time.time()
-                if proxy_format:
+                if browser_tls:
+                    from curl_cffi import requests as browser_requests
+                    # Keep device routing and certificate validation; only the
+                    # HTTP/TLS implementation changes for opted-in source calls.
+                    with browser_requests.Session(impersonate="chrome", trust_env=trust_env,
+                                                  verify=True) as session:
+                        filePage = session.get(url, headers=headers, proxies=proxy_format,
+                                               timeout=timeout)
+                elif proxy_format:
                     filePage = requests.get(url, headers=headers, proxies=proxy_format, timeout=timeout)
                 elif isProxy is False:
                     if trust_env:
@@ -118,7 +126,11 @@ class WebUtil(object):
                     # content = filePage.text
                     content = filePage.text
                 else:
-                    state = 4
+                    count += 1
+                    if filePage.status_code not in (429, 502, 503, 504) or count >= retry_time:
+                        state = 4
+                    elif sleep:
+                        time.sleep(retry_interval)
                 info = "{0},{1}, 请求无异常 attempt={2}/{3} status={4} elapsed={5:.2f}s, {6}".format(
                     sourceName,
                     ip,

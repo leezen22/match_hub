@@ -362,3 +362,25 @@ enable_finished_season_backfill = False
 ```
 
 The first rebuild keeps the old business behavior runnable. Later refactor phases will split request, parser, service, and database responsibilities.
+
+### Single basketball match facts tool
+
+```python
+from lq_update import update_match_facts
+result = update_match_facts(source_schedule_id, expected_match_id=public_match_id)
+```
+
+JSON CLI for external callers (stdout is the result; diagnostics go to stderr):
+
+```bash
+venv/bin/python scripts/update_basketball_match_facts.py --schedule-id SOURCE_ID --expected-match-id PUBLIC_ID
+```
+
+The tool validates identity, refreshes score/state, then independently updates
+team/player technical statistics and txtLive using their existing completion
+flags. A successful persisted capture is completed only when the refreshed
+score state is finished; successful empty responses follow the same rule.
+Failed score refresh does not prevent other modules from collecting, but cannot
+establish completion from an old DB state. Module errors remain independent.
+`--force` explicitly bypasses existing module completion flags. Exit code 1
+reports any module failure; callers must still reread DB after partial success.
