@@ -1257,13 +1257,42 @@ def _match_enrichment_state(schedule_id):
     from utils import sql_util
 
     rows = sql_util.select_dicts(
-        "SELECT scheduleID,matchState,technical_f,textlive_f FROM lq_schedule WHERE scheduleID={0}".format(
+        "SELECT scheduleID,matchState,leagueID,matchSeason,technical_f,textlive_f,"
+        "teamtechnic_has_data,playertechnic_has_data,textlive_has_data "
+        "FROM lq_schedule WHERE scheduleID={0}".format(
             int(schedule_id)
         )
     )
     if len(rows) == 0:
         return None
     return rows[0]
+
+
+def _league_season_has_enrichment_data(schedule_id, module):
+    """Return whether this league/season has usable data for ``module``.
+
+    A successful HTTP response with no parsed rows is only a valid terminal
+    empty result when the league/season has no evidence that the module is
+    supplied at all.  This protects against a bad source response being
+    recorded as ``done`` and then skipped forever.
+    """
+    from utils import sql_util
+
+    table = {
+        "technical": "lq_teamtechnic_period",
+        "text_live": "lq_textlive",
+    }.get(module)
+    if table is None:
+        raise ValueError("unknown enrichment module: {0}".format(module))
+    rows = sql_util.select_dicts(
+        "SELECT 1 AS has_data "
+        "FROM lq_schedule s "
+        "JOIN {table} d ON d.scheduleID=s.scheduleID "
+        "WHERE s.leagueId=(SELECT leagueId FROM lq_schedule WHERE scheduleID={sid}) "
+        "AND s.matchSeason=(SELECT matchSeason FROM lq_schedule WHERE scheduleID={sid}) "
+        "LIMIT 1".format(table=table, sid=int(schedule_id))
+    )
+    return bool(rows)
 
 
 def update_match_technical(schedule_id, force=False, match_state=None, completion_allowed=True):
@@ -1275,8 +1304,15 @@ def update_match_technical(schedule_id, force=False, match_state=None, completio
         print("technical update skipped, match not found: scheduleID={0}".format(schedule_id))
         return {"state": 0, "request_ok": False, "skipped": True, "reason": "match_not_found"}
     if not force and int(state.get("technical_f") or 0) == ENRICHMENT_FLAG_DONE:
-        print("technical update skipped, already finished: scheduleID={0}".format(schedule_id))
-        return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
+        has_stored_data = bool(state.get("teamtechnic_has_data") or state.get("playertechnic_has_data"))
+        has_known_scope = state.get("leagueID") is not None and state.get("matchSeason") is not None
+        if has_stored_data or not has_known_scope or not _league_season_has_enrichment_data(schedule_id, "technical"):
+            print("technical update skipped, already finished: scheduleID={0}".format(schedule_id))
+            return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
+        # A legacy done flag with no rows is retryable when this league/season
+        # demonstrably supplies technical facts.
+        sql_util.upData('lq_schedule', {'technical_f': ENRICHMENT_FLAG_REFRESHABLE},
+                        {'scheduleID': schedule_id})
 
     result = Technical.upMatchTechnical(schedule_id)
     resolved_match_state = match_state if match_state is not None else state.get("matchState")
@@ -1285,6 +1321,12 @@ def update_match_technical(schedule_id, force=False, match_state=None, completio
     identity_retry_required = any(
         item.get("retry_required") for item in result.get("identity_diagnostics", [])
     )
+    known_league_data = (not has_team_data and not has_player_data
+                         and state.get("leagueID") is not None and state.get("matchSeason") is not None
+                         and _league_season_has_enrichment_data(schedule_id, "technical"))
+    if known_league_data and result.get("request_ok"):
+        result["request_ok"] = False
+        result["reason"] = "empty_response_with_known_league_season_data"
     next_flag = None
     if result.get("request_ok") and not identity_retry_required:
         next_flag = (
@@ -1298,6 +1340,9 @@ def update_match_technical(schedule_id, force=False, match_state=None, completio
             'teamtechnic_has_data': 1 if has_team_data else 0,
             'playertechnic_has_data': 1 if has_player_data else 0,
         }, {'scheduleID': schedule_id})
+    elif not result.get("request_ok") and int(state.get("technical_f") or 0) == ENRICHMENT_FLAG_DONE:
+        sql_util.upData('lq_schedule', {'technical_f': ENRICHMENT_FLAG_REFRESHABLE},
+                        {'scheduleID': schedule_id})
     print("technical update finished: scheduleID={0}, request_ok={1}, flag={2}, teams={3}, players={4}, periods={5}".format(
         schedule_id,
         result.get("request_ok"),
@@ -1318,18 +1363,31 @@ def update_match_text_live(schedule_id, force=False, match_state=None, completio
         print("text live update skipped, match not found: scheduleID={0}".format(schedule_id))
         return {"state": 0, "request_ok": False, "skipped": True, "reason": "match_not_found"}
     if not force and int(state.get("textlive_f") or 0) == ENRICHMENT_FLAG_DONE:
-        print("text live update skipped, already finished: scheduleID={0}".format(schedule_id))
-        return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
+        has_known_scope = state.get("leagueID") is not None and state.get("matchSeason") is not None
+        if bool(state.get("textlive_has_data")) or not has_known_scope or not _league_season_has_enrichment_data(schedule_id, "text_live"):
+            print("text live update skipped, already finished: scheduleID={0}".format(schedule_id))
+            return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
+        sql_util.upData('lq_schedule', {'textlive_f': ENRICHMENT_FLAG_REFRESHABLE},
+                        {'scheduleID': schedule_id})
 
     result = Technical.upMatchTextLive(schedule_id)
     resolved_match_state = match_state if match_state is not None else state.get("matchState")
     has_data = result.get("events", 0) > 0
+    known_league_data = (not has_data
+                         and state.get("leagueID") is not None and state.get("matchSeason") is not None
+                         and _league_season_has_enrichment_data(schedule_id, "text_live"))
+    if known_league_data and result.get("request_ok"):
+        result["request_ok"] = False
+        result["reason"] = "empty_response_with_known_league_season_data"
     next_flag = _flag_after_collect(result, resolved_match_state if completion_allowed else None, has_data)
     if next_flag is not None:
         sql_util.upData('lq_schedule', {
             'textlive_f': next_flag,
             'textlive_has_data': 1 if has_data else 0,
         }, {'scheduleID': schedule_id})
+    elif not result.get("request_ok") and int(state.get("textlive_f") or 0) == ENRICHMENT_FLAG_DONE:
+        sql_util.upData('lq_schedule', {'textlive_f': ENRICHMENT_FLAG_REFRESHABLE},
+                        {'scheduleID': schedule_id})
     print("text live update finished: scheduleID={0}, request_ok={1}, flag={2}, events={3}".format(
         schedule_id,
         result.get("request_ok"),

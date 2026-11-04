@@ -259,10 +259,54 @@ def test_failed_text_live_request_never_persists_or_updates_old_done_flag(monkey
     monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
         'matchState': -1, 'textlive_f': 2})
     def forbidden(*args, **kwargs):
-        pytest.fail('request failure must not update stored data or flags')
+        pytest.fail('request failure must not update stored data')
     monkeypatch.setattr(sql_util, 'replace_table_row', forbidden)
     monkeypatch.setattr(sql_util, 'replace_table_rows', forbidden)
-    monkeypatch.setattr(sql_util, 'upData', forbidden)
+    writes = []
+    monkeypatch.setattr(sql_util, 'upData', lambda table, row, where: writes.append(row))
     result = lq_update.update_match_text_live(722255, force=True, match_state=-1)
     assert result['request_ok'] is False
     assert result['reason'] == 'source_request_failed'
+    assert writes == [{'textlive_f': lq_update.ENRICHMENT_FLAG_REFRESHABLE}]
+
+
+def test_known_league_season_empty_technical_response_stays_retryable(monkeypatch):
+    from lq.service.technical import Technical
+    from utils import sql_util
+
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': -1, 'leagueID': 270, 'matchSeason': '26-27',
+        'technical_f': lq_update.ENRICHMENT_FLAG_PENDING,
+        'teamtechnic_has_data': 0, 'playertechnic_has_data': 0,
+    })
+    monkeypatch.setattr(lq_update, '_league_season_has_enrichment_data', lambda sid, module: True)
+    monkeypatch.setattr(Technical, 'upMatchTechnical', lambda sid: {
+        'request_ok': True, 'players': 0, 'periods': 0, 'teams': 0,
+    })
+    writes = []
+    monkeypatch.setattr(sql_util, 'upData', lambda table, row, where: writes.append(row))
+    result = lq_update.update_match_technical(123, match_state=-1)
+    assert result['request_ok'] is False
+    assert result['reason'] == 'empty_response_with_known_league_season_data'
+    assert writes == []
+
+
+def test_known_league_season_empty_text_live_response_stays_retryable(monkeypatch):
+    from lq.service.technical import Technical
+    from utils import sql_util
+
+    monkeypatch.setattr(sql_util, 'select', lambda sql: [(722255, 361270)])
+    monkeypatch.setattr(Technical, '_fetch_txt_live_js', lambda sid: ('source', '', True))
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': -1, 'leagueID': 270, 'matchSeason': '26-27',
+        'textlive_f': lq_update.ENRICHMENT_FLAG_PENDING,
+        'textlive_has_data': 0,
+    })
+    monkeypatch.setattr(lq_update, '_league_season_has_enrichment_data', lambda sid, module: True)
+    monkeypatch.setattr(sql_util, 'replace_table_row', lambda *a: True)
+    writes = []
+    monkeypatch.setattr(sql_util, 'upData', lambda table, row, where: writes.append(row))
+    result = lq_update.update_match_text_live(722255, match_state=-1)
+    assert result['request_ok'] is False
+    assert result['reason'] == 'empty_response_with_known_league_season_data'
+    assert writes == []
