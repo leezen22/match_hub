@@ -191,3 +191,78 @@ def test_single_match_json_cli_reports_partial_failure(monkeypatch, capsys, succ
     import json
     assert json.loads(captured.out)['request_ok'] is success
     assert 'private collection diagnostic' in captured.err
+
+
+@pytest.mark.parametrize('content', [
+    '<html>temporary response</html>',
+    'unexpected provider response',
+    '10:00^1^0^0^incomplete event',
+])
+def test_nonempty_unparseable_text_live_never_persists_or_completes(monkeypatch, content):
+    from lq.service.technical import Technical
+    from utils import sql_util
+    monkeypatch.setattr(sql_util, 'select', lambda sql: [(722255, 361270)])
+    monkeypatch.setattr(Technical, '_fetch_txt_live_js', lambda sid: ('source', content, True))
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': -1, 'textlive_f': 0})
+    def forbidden(*args, **kwargs):
+        pytest.fail('invalid source must preserve stored facts and completion flags')
+    monkeypatch.setattr(sql_util, 'replace_table_row', forbidden)
+    monkeypatch.setattr(sql_util, 'replace_table_rows', forbidden)
+    monkeypatch.setattr(sql_util, 'upData', forbidden)
+    result = lq_update.update_match_text_live(722255, match_state=-1)
+    assert result['request_ok'] is False
+    assert result['source_request_ok'] is True
+    assert result['parse_ok'] is False
+    assert result['reason'] == 'nonempty_text_live_parse_failed'
+
+
+@pytest.mark.parametrize('content', ['', '  ', '\ufeff  '])
+def test_successful_empty_text_live_still_completes(monkeypatch, content):
+    from lq.service.technical import Technical
+    from utils import sql_util
+    writes = []
+    monkeypatch.setattr(sql_util, 'select', lambda sql: [(722255, 361270)])
+    monkeypatch.setattr(Technical, '_fetch_txt_live_js', lambda sid: ('source', content, True))
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': -1, 'textlive_f': 0})
+    monkeypatch.setattr(sql_util, 'replace_table_row', lambda *a: True)
+    monkeypatch.setattr(sql_util, 'upData', lambda table, row, where: writes.append(row))
+    result = lq_update.update_match_text_live(722255, match_state=-1)
+    assert result['request_ok'] is True
+    assert writes == [{'textlive_f': 2, 'textlive_has_data': 0}]
+
+
+@pytest.mark.parametrize('persist_ok', [True, False])
+def test_valid_text_live_requires_successful_persistence_before_completion(monkeypatch, persist_ok):
+    from lq.service.technical import Technical
+    from utils import sql_util
+    content = '10:00^3^0^0^第一节开始^47520802^1^0'
+    writes = []
+    monkeypatch.setattr(sql_util, 'select', lambda sql: [(722255, 361270)])
+    monkeypatch.setattr(Technical, '_fetch_txt_live_js', lambda sid: ('source', content, True))
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': -1, 'textlive_f': 0})
+    monkeypatch.setattr(sql_util, 'replace_table_row', lambda *a: persist_ok)
+    monkeypatch.setattr(sql_util, 'replace_table_rows', lambda *a: persist_ok)
+    monkeypatch.setattr(sql_util, 'upData', lambda table, row, where: writes.append(row))
+    result = lq_update.update_match_text_live(722255, match_state=-1)
+    assert result['request_ok'] is persist_ok
+    assert writes == ([{'textlive_f': 2, 'textlive_has_data': 1}] if persist_ok else [])
+
+
+def test_failed_text_live_request_never_persists_or_updates_old_done_flag(monkeypatch):
+    from lq.service.technical import Technical
+    from utils import sql_util
+    monkeypatch.setattr(sql_util, 'select', lambda sql: [(722255, 361270)])
+    monkeypatch.setattr(Technical, '_fetch_txt_live_js', lambda sid: ('source', '', False))
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': -1, 'textlive_f': 2})
+    def forbidden(*args, **kwargs):
+        pytest.fail('request failure must not update stored data or flags')
+    monkeypatch.setattr(sql_util, 'replace_table_row', forbidden)
+    monkeypatch.setattr(sql_util, 'replace_table_rows', forbidden)
+    monkeypatch.setattr(sql_util, 'upData', forbidden)
+    result = lq_update.update_match_text_live(722255, force=True, match_state=-1)
+    assert result['request_ok'] is False
+    assert result['reason'] == 'source_request_failed'

@@ -114,6 +114,16 @@ class Technical(object):
     def upMatchTextLive(scheduleID):
         text_live = Technical.text_live(scheduleID)
         rows = text_live.get('events', [])
+        if not text_live['requestOk']:
+            return {'state': 0, 'request_ok': False, 'events': 0,
+                    'reason': 'source_request_failed'}
+        # A successful empty source is valid. Nonempty unrecognized content
+        # is a parse failure, not evidence that this match has no events.
+        content = (text_live.get('rawTextLive') or '').strip().lstrip('\ufeff').strip()
+        if content and not rows:
+            return {'state': 0, 'request_ok': False, 'events': 0,
+                    'source_request_ok': True, 'parse_ok': False,
+                    'reason': 'nonempty_text_live_parse_failed'}
         persist_ok = True
         if text_live.get('rawTextLive') != '':
             persist_ok = sql_util.replace_table_row('lq_textlive_raw', {'scheduleID': scheduleID}, {
