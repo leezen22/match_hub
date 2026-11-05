@@ -77,6 +77,7 @@ class WebUtil(object):
             proxy_format = None
         count = 0
         info = ''
+        http1_fallback = False
         while state != 1 and count < retry_time and state != 4:
             attempt = count + 1
             if 'User-Agent' not in headers:
@@ -92,8 +93,12 @@ class WebUtil(object):
                     # HTTP/TLS implementation changes for opted-in source calls.
                     with browser_requests.Session(impersonate="chrome", trust_env=trust_env,
                                                   verify=True) as session:
+                        protocol_options = {}
+                        if http1_fallback:
+                            from curl_cffi.const import CurlHttpVersion
+                            protocol_options['http_version'] = CurlHttpVersion.V1_1
                         filePage = session.get(url, headers=headers, proxies=proxy_format,
-                                               timeout=timeout)
+                                               timeout=timeout, **protocol_options)
                 elif proxy_format:
                     filePage = requests.get(url, headers=headers, proxies=proxy_format, timeout=timeout)
                 elif isProxy is False:
@@ -107,6 +112,12 @@ class WebUtil(object):
                 else:
                     return [state, content]
             except Exception as e:
+                # A new connection with the same HTTP/2 negotiation repeats
+                # protocol errors. Retry with HTTP/1.1, keeping routing and
+                # certificate verification unchanged.
+                if browser_tls and (getattr(e, 'code', None) in (16, 92)
+                                    or 'curl: (92)' in str(e)):
+                    http1_fallback = True
                 count = count + 1
                 if count == retry_time:
                     state = 4

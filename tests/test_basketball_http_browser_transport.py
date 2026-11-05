@@ -57,3 +57,24 @@ def test_single_match_score_uses_https_and_browser_transport(monkeypatch):
     assert part_score.get_PartScore(722257) == {}
     assert calls[0][0] == 'https://nba.titan007.com/cn/Tech/TechTxtLive.aspx?matchid=722257'
     assert calls[0][1]['browser_tls'] is True
+
+
+def test_http2_protocol_error_retries_http1_with_same_routing_and_tls(monkeypatch):
+    from curl_cffi import requests as browser_requests
+    from curl_cffi.const import CurlHttpVersion
+    calls, options = [], []
+    class Session:
+        def __init__(self, **kwargs): options.append(kwargs)
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, *args, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise ConnectionError('curl: (92) HTTP/2 stream reset PROTOCOL_ERROR')
+            return SimpleNamespace(status_code=200, text='source')
+    monkeypatch.setattr(browser_requests, 'Session', Session)
+    assert WebUtil.requests_get('https://nba.titan007.com/test', browser_tls=True,
+                                sleep=False) == [1, 'source']
+    assert 'http_version' not in calls[0]
+    assert calls[1]['http_version'] == CurlHttpVersion.V1_1
+    assert options == [{'impersonate': 'chrome', 'trust_env': True, 'verify': True}] * 2
