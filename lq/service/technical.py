@@ -213,6 +213,7 @@ class Technical(object):
                 timeout=TITAN_ENRICHMENT_TIMEOUT,
                 sourceName=source_name,
                 browser_tls=True,
+                successful_empty_statuses=(404,),
             )
             if response[0] != 1:
                 logLine(lqconfig_qt.quarterscore_e, str(matchid))

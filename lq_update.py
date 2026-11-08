@@ -1985,6 +1985,6 @@ if __name__ == '__main__':
 
         # Optional league/team/player basic information tasks.
 
-        update_basic_info(all_leagues=True)
-        update_roster_info(all_leagues=True, missing_only=False, fetch_photos=False)
-        update_roster_info(all_leagues=True,missing_only=True, fetch_photos=False)
+        # update_basic_info(all_leagues=True)
+        # update_roster_info(all_leagues=True, missing_only=False, fetch_photos=False)
+        # update_roster_info(all_leagues=True,missing_only=True, fetch_photos=False)

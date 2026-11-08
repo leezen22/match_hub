@@ -78,3 +78,36 @@ def test_http2_protocol_error_retries_http1_with_same_routing_and_tls(monkeypatc
     assert 'http_version' not in calls[0]
     assert calls[1]['http_version'] == CurlHttpVersion.V1_1
     assert options == [{'impersonate': 'chrome', 'trust_env': True, 'verify': True}] * 2
+
+
+def test_configured_not_found_status_is_successful_empty_response(monkeypatch):
+    from curl_cffi import requests as browser_requests
+    from utils import webUtil
+    calls = []
+    class Session:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, *args, **kwargs):
+            calls.append(1)
+            return SimpleNamespace(status_code=404, text='not found')
+    monkeypatch.setattr(browser_requests, 'Session', Session)
+    monkeypatch.setattr(webUtil, 'logLine', lambda *args: pytest.fail('404 should be accepted as empty'))
+    assert WebUtil.requests_get('https://nba.titan007.com/test', browser_tls=True,
+                                successful_empty_statuses=(404,), sleep=False) == [1, '']
+    assert len(calls) == 1
+
+
+def test_unconfigured_not_found_status_remains_failure(monkeypatch):
+    from curl_cffi import requests as browser_requests
+    from utils import webUtil
+    class Session:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, *args, **kwargs):
+            return SimpleNamespace(status_code=404, text='not found')
+    monkeypatch.setattr(browser_requests, 'Session', Session)
+    monkeypatch.setattr(webUtil, 'logLine', lambda *args: None)
+    assert WebUtil.requests_get('https://example.test/not-found', browser_tls=True,
+                                sleep=False) == [4, '']

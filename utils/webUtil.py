@@ -60,7 +60,7 @@ class WebUtil(object):
     def requests_get(url, headers=None, timeout=5, isProxy=False, proxy=None,
                      retry_time=2, sleep=True, retry_interval=2,
                      isMobile=False, sourceName=None, encoding=None,
-                     trust_env=True, browser_tls=False):
+                     trust_env=True, browser_tls=False, successful_empty_statuses=()):
         state = 0
         content = ''
         ip = ''
@@ -136,6 +136,9 @@ class WebUtil(object):
                         filePage.encoding = encoding
                     # content = filePage.text
                     content = filePage.text
+                elif filePage.status_code in successful_empty_statuses:
+                    state = 1
+                    content = ''
                 else:
                     count += 1
                     if filePage.status_code not in (429, 502, 503, 504) or count >= retry_time:
