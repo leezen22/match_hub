@@ -22,7 +22,8 @@ LEAGUE_NAME_ALIASES = {
 # lq_schedule.technical_f / textlive_f
 # 0 = pending: 未采集
 # 1 = refreshable: 已采到数据，但非终局比赛仍允许继续刷新
-# 2 = done: 已完成，不再采集；是否有实体数据看 *_has_data
+# 2 = done: 请求、解析及写入成功且比赛已结束；允许空结果，是否有数据看 *_has_data
+# Each module is independent. League coverage never overrides a successful empty result.
 ENRICHMENT_FLAG_PENDING = 0
 ENRICHMENT_FLAG_REFRESHABLE = 1
 ENRICHMENT_FLAG_DONE = 2
@@ -305,11 +306,12 @@ def _enrichment_skip_reason(match_state, technical_f, textlive_f):
 def _should_update_part_score(match_state, match_time, partscore_f=None, score_parts=None):
     if match_time is None or match_time > datetime.now():
         return False
-    if int(match_state) == -2:
+    if match_state is None or int(match_state) < -1:
         return False
-    if partscore_f != 2:
+    if partscore_f in (0, 1):
         return True
-    return int(match_state) == -1 and _has_incomplete_part_scores(score_parts)
+    return (int(match_state) == -1 and partscore_f == 2
+            and _has_incomplete_part_scores(score_parts))
 
 
 def _has_incomplete_part_scores(score_parts):
@@ -1257,7 +1259,10 @@ def _match_enrichment_state(schedule_id):
     from utils import sql_util
 
     rows = sql_util.select_dicts(
-        "SELECT scheduleID,matchState,leagueID,matchSeason,technical_f,textlive_f,"
+        "SELECT scheduleID,matchState,matchTime,partscore_f,"
+        "homeScore1,homeScore2,homeScore3,homeScore4,"
+        "awayScore1,awayScore2,awayScore3,awayScore4,"
+        "leagueID,matchSeason,technical_f,textlive_f,"
         "teamtechnic_has_data,playertechnic_has_data,textlive_has_data "
         "FROM lq_schedule WHERE scheduleID={0}".format(
             int(schedule_id)
@@ -1268,31 +1273,12 @@ def _match_enrichment_state(schedule_id):
     return rows[0]
 
 
-def _league_season_has_enrichment_data(schedule_id, module):
-    """Return whether this league/season has usable data for ``module``.
-
-    A successful HTTP response with no parsed rows is only a valid terminal
-    empty result when the league/season has no evidence that the module is
-    supplied at all.  This protects against a bad source response being
-    recorded as ``done`` and then skipped forever.
-    """
-    from utils import sql_util
-
-    table = {
-        "technical": "lq_teamtechnic_period",
-        "text_live": "lq_textlive",
-    }.get(module)
-    if table is None:
-        raise ValueError("unknown enrichment module: {0}".format(module))
-    rows = sql_util.select_dicts(
-        "SELECT 1 AS has_data "
-        "FROM lq_schedule s "
-        "JOIN {table} d ON d.scheduleID=s.scheduleID "
-        "WHERE s.leagueId=(SELECT leagueId FROM lq_schedule WHERE scheduleID={sid}) "
-        "AND s.matchSeason=(SELECT matchSeason FROM lq_schedule WHERE scheduleID={sid}) "
-        "LIMIT 1".format(table=table, sid=int(schedule_id))
-    )
-    return bool(rows)
+def _enrichment_ineligible_reason(state):
+    if state.get("matchTime") is not None and state["matchTime"] > datetime.now():
+        return "match_not_started"
+    if state.get("matchState") is not None and int(state["matchState"]) < -1:
+        return "match_status_not_collectable"
+    return None
 
 
 def update_match_technical(schedule_id, force=False, match_state=None, completion_allowed=True):
@@ -1303,16 +1289,12 @@ def update_match_technical(schedule_id, force=False, match_state=None, completio
     if state is None:
         print("technical update skipped, match not found: scheduleID={0}".format(schedule_id))
         return {"state": 0, "request_ok": False, "skipped": True, "reason": "match_not_found"}
+    reason = _enrichment_ineligible_reason(state)
+    if reason:
+        return {"state": 0, "request_ok": True, "skipped": True, "reason": reason}
     if not force and int(state.get("technical_f") or 0) == ENRICHMENT_FLAG_DONE:
-        has_stored_data = bool(state.get("teamtechnic_has_data") or state.get("playertechnic_has_data"))
-        has_known_scope = state.get("leagueID") is not None and state.get("matchSeason") is not None
-        if has_stored_data or not has_known_scope or not _league_season_has_enrichment_data(schedule_id, "technical"):
-            print("technical update skipped, already finished: scheduleID={0}".format(schedule_id))
-            return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
-        # A legacy done flag with no rows is retryable when this league/season
-        # demonstrably supplies technical facts.
-        sql_util.upData('lq_schedule', {'technical_f': ENRICHMENT_FLAG_REFRESHABLE},
-                        {'scheduleID': schedule_id})
+        print("technical update skipped, already finished: scheduleID={0}".format(schedule_id))
+        return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
 
     result = Technical.upMatchTechnical(schedule_id)
     resolved_match_state = match_state if match_state is not None else state.get("matchState")
@@ -1321,12 +1303,6 @@ def update_match_technical(schedule_id, force=False, match_state=None, completio
     identity_retry_required = any(
         item.get("retry_required") for item in result.get("identity_diagnostics", [])
     )
-    known_league_data = (not has_team_data and not has_player_data
-                         and state.get("leagueID") is not None and state.get("matchSeason") is not None
-                         and _league_season_has_enrichment_data(schedule_id, "technical"))
-    if known_league_data and result.get("request_ok"):
-        result["request_ok"] = False
-        result["reason"] = "empty_response_with_known_league_season_data"
     next_flag = None
     if result.get("request_ok") and not identity_retry_required:
         next_flag = (
@@ -1362,23 +1338,16 @@ def update_match_text_live(schedule_id, force=False, match_state=None, completio
     if state is None:
         print("text live update skipped, match not found: scheduleID={0}".format(schedule_id))
         return {"state": 0, "request_ok": False, "skipped": True, "reason": "match_not_found"}
+    reason = _enrichment_ineligible_reason(state)
+    if reason:
+        return {"state": 0, "request_ok": True, "skipped": True, "reason": reason}
     if not force and int(state.get("textlive_f") or 0) == ENRICHMENT_FLAG_DONE:
-        has_known_scope = state.get("leagueID") is not None and state.get("matchSeason") is not None
-        if bool(state.get("textlive_has_data")) or not has_known_scope or not _league_season_has_enrichment_data(schedule_id, "text_live"):
-            print("text live update skipped, already finished: scheduleID={0}".format(schedule_id))
-            return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
-        sql_util.upData('lq_schedule', {'textlive_f': ENRICHMENT_FLAG_REFRESHABLE},
-                        {'scheduleID': schedule_id})
+        print("text live update skipped, already finished: scheduleID={0}".format(schedule_id))
+        return {"state": 1, "request_ok": True, "skipped": True, "reason": "already_finished"}
 
     result = Technical.upMatchTextLive(schedule_id)
     resolved_match_state = match_state if match_state is not None else state.get("matchState")
     has_data = result.get("events", 0) > 0
-    known_league_data = (not has_data
-                         and state.get("leagueID") is not None and state.get("matchSeason") is not None
-                         and _league_season_has_enrichment_data(schedule_id, "text_live"))
-    if known_league_data and result.get("request_ok"):
-        result["request_ok"] = False
-        result["reason"] = "empty_response_with_known_league_season_data"
     next_flag = _flag_after_collect(result, resolved_match_state if completion_allowed else None, has_data)
     if next_flag is not None:
         sql_util.upData('lq_schedule', {
@@ -1403,10 +1372,22 @@ def update_match_enrichment_task(schedule_id, include_technical=True, include_te
         print("enrichment update skipped, match not found: scheduleID={0}".format(schedule_id))
         return {"technical": None, "text_live": None, "skipped": True, "reason": "match_not_found"}
 
-    score = up_score_batch([schedule_id]).get(schedule_id, {"request_ok": False})
-    completion_allowed = score.get("request_ok") is True
-    # Never use the stale pre-refresh state to close a new collection attempt.
+    score = {"request_ok": True, "skipped": True, "reason": "score_update_not_required_by_db"}
+    score_parts = [state.get("homeScore{0}".format(period)) for period in range(1, 5)] + \
+        [state.get("awayScore{0}".format(period)) for period in range(1, 5)]
+    if _should_update_part_score(
+            state.get("matchState"), state.get("matchTime"), state.get("partscore_f"),
+            score_parts):
+        score = up_score_batch([schedule_id]).get(schedule_id, {"request_ok": False})
+    completion_allowed = score.get("request_ok") is True and not score.get("skipped")
     match_state = score.get("match_state") if completion_allowed else None
+    # A completed DB score needs no new source request to confirm its finality.
+    if (score.get("skipped") and str(state.get("matchState")) == "-1"
+            and state.get("partscore_f") == 2
+            and not _has_incomplete_part_scores(score_parts)):
+        completion_allowed = True
+        match_state = -1
+        score["match_state"] = -1
     results = {"score": score, "technical": None, "text_live": None}
     for name, enabled, update in (
             ("technical", include_technical, update_match_technical),
@@ -1989,7 +1970,7 @@ if __name__ == '__main__':
          # update_schedule_js()
         # update_schedule_js_active(all_leagues=True, season_count=3)
         # update_schedule()
-        # update_score()
+        update_score()
         # update_odds()
         # update_details()
 

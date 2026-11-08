@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -64,6 +65,11 @@ def test_technical_completion_requires_success_and_finished_match(monkeypatch, m
     })
     monkeypatch.setattr(sql_util, 'upData', lambda table, row, condition: writes.append(row))
     result = lq_update.update_match_technical(663734)
+    if match_state == -4:
+        assert result['skipped'] is True
+        assert result['reason'] == 'match_status_not_collectable'
+        assert writes == []
+        return
     assert result['request_ok'] is request_ok
     if not request_ok:
         assert writes == []
@@ -76,7 +82,8 @@ def test_technical_completion_requires_success_and_finished_match(monkeypatch, m
 @pytest.mark.parametrize('source_state', [-1, 2])
 def test_enrichment_refreshes_score_before_both_modules(monkeypatch, source_state):
     calls = []
-    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {'matchState': 0})
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': 0, 'matchTime': datetime.now() - timedelta(hours=1), 'partscore_f': 0})
     def score(ids):
         calls.append(('score', ids))
         return {123: {'request_ok': True, 'match_state': source_state}}
@@ -95,7 +102,8 @@ def test_enrichment_refreshes_score_before_both_modules(monkeypatch, source_stat
 
 
 def test_score_failure_does_not_close_or_block_other_modules(monkeypatch):
-    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {'matchState': -1})
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': -1, 'matchTime': datetime.now() - timedelta(hours=3), 'partscore_f': 0})
     monkeypatch.setattr(lq_update, 'up_score_batch', lambda ids: {123: {'request_ok': False}})
     def technical(sid, **kwargs):
         assert kwargs['completion_allowed'] is False
@@ -270,7 +278,7 @@ def test_failed_text_live_request_never_persists_or_updates_old_done_flag(monkey
     assert writes == [{'textlive_f': lq_update.ENRICHMENT_FLAG_REFRESHABLE}]
 
 
-def test_known_league_season_empty_technical_response_stays_retryable(monkeypatch):
+def test_empty_technical_response_completes_even_when_league_season_has_data(monkeypatch):
     from lq.service.technical import Technical
     from utils import sql_util
 
@@ -279,19 +287,19 @@ def test_known_league_season_empty_technical_response_stays_retryable(monkeypatc
         'technical_f': lq_update.ENRICHMENT_FLAG_PENDING,
         'teamtechnic_has_data': 0, 'playertechnic_has_data': 0,
     })
-    monkeypatch.setattr(lq_update, '_league_season_has_enrichment_data', lambda sid, module: True)
     monkeypatch.setattr(Technical, 'upMatchTechnical', lambda sid: {
         'request_ok': True, 'players': 0, 'periods': 0, 'teams': 0,
     })
     writes = []
     monkeypatch.setattr(sql_util, 'upData', lambda table, row, where: writes.append(row))
     result = lq_update.update_match_technical(123, match_state=-1)
-    assert result['request_ok'] is False
-    assert result['reason'] == 'empty_response_with_known_league_season_data'
-    assert writes == []
+    assert result['request_ok'] is True
+    assert writes == [{'technical_f': lq_update.ENRICHMENT_FLAG_DONE,
+                       'teamTech': 0, 'teamtechnic_has_data': 0,
+                       'playertechnic_has_data': 0}]
 
 
-def test_known_league_season_empty_text_live_response_stays_retryable(monkeypatch):
+def test_empty_text_live_response_completes_even_when_league_season_has_data(monkeypatch):
     from lq.service.technical import Technical
     from utils import sql_util
 
@@ -302,11 +310,82 @@ def test_known_league_season_empty_text_live_response_stays_retryable(monkeypatc
         'textlive_f': lq_update.ENRICHMENT_FLAG_PENDING,
         'textlive_has_data': 0,
     })
-    monkeypatch.setattr(lq_update, '_league_season_has_enrichment_data', lambda sid, module: True)
     monkeypatch.setattr(sql_util, 'replace_table_row', lambda *a: True)
     writes = []
     monkeypatch.setattr(sql_util, 'upData', lambda table, row, where: writes.append(row))
     result = lq_update.update_match_text_live(722255, match_state=-1)
-    assert result['request_ok'] is False
-    assert result['reason'] == 'empty_response_with_known_league_season_data'
-    assert writes == []
+    assert result['request_ok'] is True
+    assert writes == [{'textlive_f': lq_update.ENRICHMENT_FLAG_DONE,
+                       'textlive_has_data': 0}]
+
+
+@pytest.mark.parametrize('state,flag,missing,expected', [
+    (0, 0, False, True), (1, 1, False, True), (4, 1, False, True),
+    (50, 0, False, True), (-1, 1, False, True),
+    (-1, 2, True, True), (-1, 2, False, False),
+    (1, 2, True, False), (-2, 0, True, False), (-4, 0, True, False),
+    (0, None, True, False), (0, 3, True, False),
+])
+def test_score_db_gate_matches_pending_and_incomplete_sql(state, flag, missing, expected):
+    parts = [25] * 8
+    if missing:
+        parts[0] = None
+    assert lq_update._should_update_part_score(
+        state, datetime.now() - timedelta(hours=1), flag, parts) is expected
+
+
+def test_score_db_gate_skips_future_match():
+    assert not lq_update._should_update_part_score(
+        0, datetime.now() + timedelta(hours=1), 0, [None] * 8)
+
+
+@pytest.mark.parametrize('future,force', [(True, False), (False, False), (False, True)])
+def test_enrichment_skips_unneeded_score_but_runs_other_modules(monkeypatch, future, force):
+    state = dict(matchState=0 if future else -1, partscore_f=0 if future else 2,
+                 matchTime=datetime.now() + timedelta(hours=1 if future else -3))
+    state.update({side + 'Score' + str(q): 25 for side in ('home', 'away') for q in range(1, 5)})
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: state)
+    monkeypatch.setattr(lq_update, 'up_score_batch', lambda ids: pytest.fail('unexpected score request'))
+    calls = []
+    def collect(sid, **kwargs):
+        calls.append(kwargs)
+        assert kwargs['completion_allowed'] is (not future)
+        assert kwargs['match_state'] == (None if future else -1)
+        return {'request_ok': True}
+    monkeypatch.setattr(lq_update, 'update_match_technical', collect)
+    monkeypatch.setattr(lq_update, 'update_match_text_live', collect)
+    result = lq_update.update_match_enrichment(123, force=force)
+    assert result['score']['skipped'] is True
+    assert result['score']['request_ok'] is True
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize('module', ['technical', 'text_live'])
+@pytest.mark.parametrize('force', [False, True])
+@pytest.mark.parametrize('state,hours,reason', [
+    (0, 1, 'match_not_started'), (-2, -1, 'match_status_not_collectable'),
+    (-3, -1, 'match_status_not_collectable'), (-4, -1, 'match_status_not_collectable'),
+    (-5, -1, 'match_status_not_collectable'),
+])
+def test_enrichment_ineligible_match_never_requests_or_writes(monkeypatch, module, force, state, hours, reason):
+    from lq.service.technical import Technical
+    from utils import sql_util
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': state, 'matchTime': datetime.now() + timedelta(hours=hours),
+        'technical_f': 0, 'textlive_f': 0})
+    monkeypatch.setattr(Technical, 'upMatchTechnical', lambda sid: pytest.fail('unexpected request'))
+    monkeypatch.setattr(Technical, 'upMatchTextLive', lambda sid: pytest.fail('unexpected request'))
+    monkeypatch.setattr(sql_util, 'upData', lambda *args: pytest.fail('unexpected DB write'))
+    result = getattr(lq_update, 'update_match_' + module)(123, force=force)
+    assert result['skipped'] is True
+    assert result['reason'] == reason
+
+
+def test_team_only_technical_completion_remains_valid(monkeypatch):
+    from lq.service.technical import Technical
+    monkeypatch.setattr(lq_update, '_match_enrichment_state', lambda sid: {
+        'matchState': -1, 'matchTime': datetime.now() - timedelta(hours=3),
+        'technical_f': 2, 'teamtechnic_has_data': 1, 'playertechnic_has_data': 0,
+        'leagueID': 1, 'matchSeason': '26-27'})
+    monkeypatch.setattr(Technical, 'upMatchTechnical', lambda sid: pytest.fail('unexpected request'))
+    assert lq_update.update_match_technical(123)['reason'] == 'already_finished'
